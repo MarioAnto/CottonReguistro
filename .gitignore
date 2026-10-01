@@ -1,0 +1,11 @@
+# Bases de datos locales exportadas desde la app (pueden contener datos personales)
+*.sqlite
+*.sqlite3
+*.db
+
+# Sistema / editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+node_modules/

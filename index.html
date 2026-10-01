@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestor de Registros - SQLite & GitHub Ready</title>
+    <meta name="description" content="Gestor de registros con SQLite (WebAssembly) que corre 100% en el navegador, sin servidor.">
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- Google Fonts Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SQL.js (SQLite compiled to WebAssembly for browser) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 h-full flex flex-col selection:bg-indigo-500 selection:text-white">
+
+    <!-- Header -->
+    <header class="bg-slate-800/80 backdrop-blur border-b border-slate-700 sticky top-0 z-30 shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                    <i class="fa-solid fa-database text-white text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg tracking-tight text-white flex items-center gap-2">
+                        SQLite Web Vault 
+                        <span id="db-status" class="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">Cargando SQLite...</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Gestor de Registros con Base de Datos Local</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-2">
+                <button onclick="exportDatabase()" title="Descargar archivo .sqlite" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-medium transition shadow-sm border border-slate-600">
+                    <i class="fa-solid fa-download"></i> Descargar .sqlite
+                </button>
+                <label title="Importar archivo .sqlite" class="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-medium transition shadow-sm border border-slate-600">
+                    <i class="fa-solid fa-upload"></i> Importar
+                    <input type="file" id="import-db-file" accept=".sqlite,.db" onchange="importDatabase(event)" class="hidden">
+                </label>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col lg:flex-row gap-8">
+        
+        <!-- Form Section -->
+        <section class="w-full lg:w-96 shrink-0">
+            <div class="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-6 shadow-xl sticky top-24 backdrop-blur">
+                <div class="flex items-center justify-between mb-5">
+                    <h2 class="text-base font-semibold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-circle-plus text-indigo-400"></i> Nuevo Registro
+                    </h2>
+                    <button onclick="resetForm()" class="text-xs text-slate-400 hover:text-slate-200 transition">
+                        <i class="fa-solid fa-rotate-right"></i> Limpiar
+                    </button>
+                </div>
+
+                <form id="record-form" onsubmit="saveRecord(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1.5">Nombre Completo / Asunto</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                <i class="fa-solid fa-user text-xs"></i>
+                            </span>
+                            <input type="text" id="nombre" required placeholder="Ej. Juan Pérez López" 
+                                class="w-full pl-9 pr-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition">
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between items-center mb-1.5">
+                            <label class="block text-xs font-medium text-slate-300">Folio</label>
+                            <button type="button" onclick="generateFolio()" class="text-[11px] text-indigo-400 hover:text-indigo-300 transition">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> Autogenerar
+                            </button>
+                        </div>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                <i class="fa-solid fa-hashtag text-xs"></i>
+                            </span>
+                            <input type="text" id="folio" required placeholder="Ej. FOLIO-2026-001" 
+                                class="w-full pl-9 pr-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1.5">Fecha y Hora</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                <i class="fa-solid fa-calendar-days text-xs"></i>
+                            </span>
+                            <input type="datetime-local" id="fecha" required 
+                                class="w-full pl-9 pr-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition">
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between items-center mb-1.5">
+                            <label class="block text-xs font-medium text-slate-300">Ubicación</label>
+                            <button type="button" onclick="getLocation()" class="text-[11px] text-indigo-400 hover:text-indigo-300 transition flex items-center gap-1">
+                                <i class="fa-solid fa-location-crosshairs"></i> Obtener GPS
+                            </button>
+                        </div>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                <i class="fa-solid fa-location-dot text-xs"></i>
+                            </span>
+                            <input type="text" id="ubicacion" required placeholder="Ej. Guasave, Sinaloa / Coordenadas" 
+                                class="w-full pl-9 pr-3 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition">
+                        </div>
+                    </div>
+
+                    <button type="submit" id="submit-btn" disabled
+                        class="w-full mt-2 py-3 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-medium rounded-xl shadow-lg shadow-indigo-600/30 transition flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed">
+                        <i class="fa-solid fa-floppy-disk"></i> Guardar en SQLite
+                    </button>
+                </form>
+            </div>
+        </section>
+
+        <!-- Records Table Section -->
+        <section class="flex-1 flex flex-col min-w-0">
+            <div class="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-6 shadow-xl flex-1 flex flex-col backdrop-blur">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                    <div>
+                        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-table-list text-indigo-400"></i> Registros Almacenados
+                        </h2>
+                        <p class="text-xs text-slate-400">Base de datos SQLite en ejecución local (WebAssembly)</p>
+                    </div>
+
+                    <div class="flex items-center gap-3">
+                        <div class="relative flex-1 sm:w-64">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                <i class="fa-solid fa-search text-xs"></i>
+                            </span>
+                            <input type="text" id="search-input" oninput="filterRecords()" placeholder="Buscar por nombre, folio..." 
+                                class="w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <span id="record-count" class="text-xs font-semibold bg-slate-700 text-slate-300 px-3 py-2 rounded-xl border border-slate-600 shrink-0">0 registros</span>
+                    </div>
+                </div>
+
+                <!-- Table Container -->
+                <div class="overflow-x-auto flex-1 rounded-xl border border-slate-700">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-900/80 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700">
+                                <th class="py-3 px-4 font-semibold">ID</th>
+                                <th class="py-3 px-4 font-semibold">Nombre</th>
+                                <th class="py-3 px-4 font-semibold">Folio</th>
+                                <th class="py-3 px-4 font-semibold">Fecha</th>
+                                <th class="py-3 px-4 font-semibold">Ubicación</th>
+                                <th class="py-3 px-4 font-semibold text-right">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="records-table-body" class="divide-y divide-slate-700/60 text-sm text-slate-200">
+                            <tr>
+                                <td colspan="6" class="text-center py-12 text-slate-400">
+                                    <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-indigo-400"></i>
+                                    <p class="text-xs">Inicializando base de datos SQLite...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- GitHub Info Footer -->
+                <div class="mt-6 p-4 rounded-xl bg-slate-900/60 border border-slate-700/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-brands fa-github text-white text-base"></i>
+                        <span>Listo para subir a GitHub Pages (frontend estático autónomo).</span>
+                    </div>
+                    <a href="https://github.com" target="_blank" class="text-indigo-400 hover:text-indigo-300 font-medium inline-flex items-center gap-1">
+                        Ver Guía GitHub <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                    </a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-6 right-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+        <div id="toast-content" class="bg-slate-800 border border-slate-700 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-sm">
+            <i id="toast-icon" class="fa-solid fa-circle-check text-emerald-400"></i>
+            <span id="toast-message">Operación exitosa</span>
+        </div>
+    </div>
+
+    <!-- Script SQLite Logic -->
+    <script>
+        let db = null;
+        let SQL = null;
+        let allRecords = [];
+
+        // Inicializar SQL.js al cargar la página
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // Configurar fecha actual por defecto en el input
+                setDefaultDateTime();
+
+                // Cargar SQL.js desde CDN WebAssembly
+                SQL = await initSqlJs({
+                    locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+                });
+
+                // Intentar cargar base de datos guardada en localStorage si existe
+                const savedDb = localStorage.getItem('sqlite_vault_db');
+                if (savedDb) {
+                    const uInt8Array = new Uint8Array(JSON.parse(`[${savedDb}]`));
+                    db = new SQL.Database(uInt8Array);
+                    showToast('Base de datos cargada desde almacenamiento local', 'success');
+                } else {
+                    db = new SQL.Database();
+                    // Crear tabla inicial
+                    db.run(`
+                        CREATE TABLE IF NOT EXISTS registros (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            nombre TEXT NOT NULL,
+                            folio TEXT NOT NULL,
+                            fecha TEXT NOT NULL,
+                            ubicacion TEXT NOT NULL,
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                        );
+                    `);
+                    saveDbToLocalStorage();
+                    showToast('Nueva base de datos SQLite creada', 'success');
+                }
+
+                document.getElementById('db-status').textContent = 'SQLite Activo (WASM)';
+                document.getElementById('db-status').className = 'text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+                document.getElementById('submit-btn').disabled = false;
+
+                loadRecords();
+            } catch (err) {
+                console.error(err);
+                document.getElementById('db-status').textContent = 'Error SQLite';
+                document.getElementById('db-status').className = 'text-xs px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30';
+                showToast('Error al inicializar SQLite. Ver consola.', 'error');
+            }
+        });
+
+        function setDefaultDateTime() {
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            document.getElementById('fecha').value = now.toISOString().slice(0, 16);
+        }
+
+        function generateFolio() {
+            const randomNum = Math.floor(1000 + Math.random() * 9000);
+            const year = new Date().getFullYear();
+            document.getElementById('folio').value = `FOL-${year}-${randomNum}`;
+            showToast('Folio autogenerado con éxito', 'success');
+        }
+
+        function getLocation() {
+            if (!navigator.geolocation) {
+                showToast('Geolocalización no soportada por tu navegador', 'error');
+                return;
+            }
+            showToast('Obteniendo ubicación GPS...', 'info');
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude.toFixed(4);
+                    const lon = position.coords.longitude.toFixed(4);
+                    document.getElementById('ubicacion').value = `Lat: ${lat}, Lon: ${lon}`;
+                    showToast('Ubicación obtenida correctamente', 'success');
+                },
+                (error) => {
+                    showToast('No se pudo obtener la ubicación (permiso denegado)', 'error');
+                },
+                { timeout: 10000 }
+            );
+        }
+
+        function saveDbToLocalStorage() {
+            if (!db) return;
+            const binaryArray = db.export();
+            const jsonString = Array.from(binaryArray).join(',');
+            localStorage.setItem('sqlite_vault_db', jsonString);
+        }
+
+        function saveRecord(e) {
+            e.preventDefault();
+            if (!db) return;
+
+            const nombre = document.getElementById('nombre').value.trim();
+            const folio = document.getElementById('folio').value.trim();
+            const fecha = document.getElementById('fecha').value;
+            const ubicacion = document.getElementById('ubicacion').value.trim();
+
+            try {
+                const stmt = db.prepare("INSERT INTO registros (nombre, folio, fecha, ubicacion) VALUES (?, ?, ?, ?)");
+                stmt.run([nombre, folio, fecha, ubicacion]);
+                stmt.free();
+
+                saveDbToLocalStorage();
+                loadRecords();
+                resetForm();
+                showToast('Registro guardado exitosamente en SQLite', 'success');
+            } catch (err) {
+                console.error(err);
+                showToast('Error al guardar el registro', 'error');
+            }
+        }
+
+        function loadRecords() {
+            if (!db) return;
+            try {
+                const res = db.exec("SELECT id, nombre, folio, fecha, ubicacion FROM registros ORDER BY id DESC");
+                allRecords = [];
+                if (res.length > 0) {
+                    const columns = res[0].columns;
+                    const values = res[0].values;
+                    allRecords = values.map(row => ({
+                        id: row[0],
+                        nombre: row[1],
+                        folio: row[2],
+                        fecha: row[3],
+                        ubicacion: row[4]
+                    }));
+                }
+                renderTable(allRecords);
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function renderTable(records) {
+            const tbody = document.getElementById('records-table-body');
+            document.getElementById('record-count').textContent = `${records.length} registros`;
+
+            if (records.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="text-center py-12 text-slate-400">
+                            <i class="fa-solid fa-folder-open text-3xl mb-2 text-slate-600"></i>
+                            <p class="text-xs">No hay registros guardados todavía.</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = records.map(r => `
+                <tr class="hover:bg-slate-700/40 transition animate-fade-in">
+                    <td class="py-3 px-4 font-mono text-xs text-indigo-300">#${r.id}</td>
+                    <td class="py-3 px-4 font-medium text-white">${escapeHtml(r.nombre)}</td>
+                    <td class="py-3 px-4">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                            ${escapeHtml(r.folio)}
+                        </span>
+                    </td>
+                    <td class="py-3 px-4 text-xs text-slate-300">${formatDate(r.fecha)}</td>
+                    <td class="py-3 px-4 text-xs text-slate-300 flex items-center gap-1.5 pt-4">
+                        <i class="fa-solid fa-location-dot text-indigo-400"></i> ${escapeHtml(r.ubicacion)}
+                    </td>
+                    <td class="py-3 px-4 text-right">
+                        <button onclick="deleteRecord(${r.id})" class="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-500/10 transition" title="Eliminar registro">
+                            <i class="fa-solid fa-trash-can text-xs"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function deleteRecord(id) {
+            if (!confirm('¿Estás seguro de eliminar este registro?')) return;
+            try {
+                const stmt = db.prepare("DELETE FROM registros WHERE id = ?");
+                stmt.run([id]);
+                stmt.free();
+
+                saveDbToLocalStorage();
+                loadRecords();
+                showToast('Registro eliminado', 'success');
+            } catch (err) {
+                console.error(err);
+                showToast('Error al eliminar registro', 'error');
+            }
+        }
+
+        function filterRecords() {
+            const query = document.getElementById('search-input').value.toLowerCase();
+            const filtered = allRecords.filter(r => 
+                r.nombre.toLowerCase().includes(query) || 
+                r.folio.toLowerCase().includes(query) ||
+                r.ubicacion.toLowerCase().includes(query)
+            );
+            renderTable(filtered);
+        }
+
+        function resetForm() {
+            document.getElementById('record-form').reset();
+            setDefaultDateTime();
+        }
+
+        function exportDatabase() {
+            if (!db) return;
+            const binaryArray = db.export();
+            const blob = new Blob([binaryArray], { type: 'application/x-sqlite3' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `registros_${new Date().toISOString().slice(0,10)}.sqlite`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('Base de datos SQLite exportada con éxito', 'success');
+        }
+
+        function importDatabase(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const uInt8Array = new Uint8Array(e.target.result);
+                    db = new SQL.Database(uInt8Array);
+                    saveDbToLocalStorage();
+                    loadRecords();
+                    showToast('Base de datos SQLite importada correctamente', 'success');
+                } catch (err) {
+                    console.error(err);
+                    showToast('Archivo SQLite inválido o corrupto', 'error');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            const d = new Date(dateStr);
+            if (isNaN(d)) return dateStr;
+            return d.toLocaleString('es-ES', { 
+                day: '2-digit', month: '2-digit', year: 'numeric', 
+                hour: '2-digit', minute: '2-digit' 
+            });
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toast-message');
+            const toastIcon = document.getElementById('toast-icon');
+
+            toastMessage.textContent = message;
+            if (type === 'success') {
+                toastIcon.className = 'fa-solid fa-circle-check text-emerald-400';
+            } else if (type === 'error') {
+                toastIcon.className = 'fa-solid fa-circle-exclamation text-rose-400';
+            } else {
+                toastIcon.className = 'fa-solid fa-circle-info text-indigo-400';
+            }
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
