@@ -1,0 +1,1747 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-slate-950">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>PROTEKTA AGRICULTURA - Mapeo GPS & Calculadora de Fertilización y Riego</title>
+    <meta name="theme-color" content="#0B131F">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="PROTEKTA Agro">
+    <link rel="manifest" href="manifest.webmanifest">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { colors: { protekta: {
+                blue: '#004B93', blueHover: '#003870', blueLight: '#1A6BB5',
+                green: '#2E7D32', greenHover: '#1B5E20', greenLight: '#4CAF50',
+                grey: '#555555', dark: '#0B131F' } } } }
+        }
+    </script>
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #090d16; }
+        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+        .leaflet-container { font-family: inherit; background-color: #020617; }
+        input, select, button { touch-action: manipulation; }
+        input[type=number], input[type=text], select { font-size: 16px; } /* evita zoom automático en iPhone */
+        @media (min-width: 768px) { input[type=number], input[type=text], select { font-size: 12px; } }
+
+        /* Reporte imprimible: el contenedor original usaba display:none y nunca se imprimía */
+        @media print {
+            html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
+            body > *:not(#printable-report) { display: none !important; }
+            #printable-report { display: block !important; position: static !important; width: 100%; color: #111827; background: #fff; padding: 12px; }
+            @page { size: letter landscape; margin: 10mm; }
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans text-slate-100 antialiased bg-slate-950 overflow-hidden">
+
+    <!-- HEADER -->
+    <header class="h-16 bg-slate-900 border-b border-slate-800 px-3 md:px-4 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center space-x-3 min-w-0">
+            <div class="h-11 w-11 bg-white p-1 rounded-xl shadow-md flex items-center justify-center shrink-0 border border-slate-700">
+                <svg viewBox="0 0 400 400" class="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M 200 20 L 340 70 V 210 C 340 290 270 350 200 380 C 130 350 60 290 60 210 V 70 Z" fill="none" stroke="#004B93" stroke-width="26" stroke-linejoin="round"/>
+                    <path d="M 160 110 A 55 55 0 0 1 240 110" fill="none" stroke="#004B93" stroke-width="12" stroke-linecap="round"/>
+                    <path d="M 175 128 A 32 32 0 0 1 225 128" fill="none" stroke="#004B93" stroke-width="10" stroke-linecap="round"/>
+                    <circle cx="200" cy="144" r="7" fill="#004B93"/>
+                    <path d="M 200 150 L 280 205 V 270 H 120 V 205 Z" fill="#555555"/>
+                    <rect x="180" y="215" width="18" height="18" fill="#FFFFFF"/>
+                    <rect x="202" y="215" width="18" height="18" fill="#FFFFFF"/>
+                    <path d="M 75 220 C 130 250 270 250 325 220 C 335 270 280 340 200 365 C 120 340 65 270 75 220 Z" fill="#2E7D32"/>
+                    <path d="M 100 240 Q 200 270 300 240" fill="none" stroke="#FFFFFF" stroke-width="6" opacity="0.6"/>
+                    <path d="M 120 265 Q 200 295 280 265" fill="none" stroke="#FFFFFF" stroke-width="6" opacity="0.6"/>
+                    <path d="M 270 190 Q 300 160 330 185 Q 295 220 270 190 Z" fill="#2E7D32"/>
+                    <path d="M 250 210 Q 260 175 295 195 Q 275 230 250 210 Z" fill="#4CAF50"/>
+                </svg>
+            </div>
+            <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                    <h1 class="text-sm md:text-base font-black tracking-wider text-white leading-none truncate">PROTEKTA <span class="text-protekta-green">AGRICULTURA</span></h1>
+                    <span class="hidden sm:inline text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">V7.0</span>
+                </div>
+                <p class="hidden sm:block text-[10px] text-slate-400 font-medium">Sistemas de Seguridad, Smart Home & Tecnología Agrícola</p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-1.5">
+            <button id="btn-my-location" class="flex items-center space-x-2 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition" title="Ir a mi ubicación">
+                <i class="fa-solid fa-crosshairs text-protekta-green"></i><span class="hidden lg:inline">Mi GPS</span>
+            </button>
+            <button id="btn-export-geojson" class="flex items-center space-x-2 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition" title="Exportar GeoJSON (respaldo)">
+                <i class="fa-solid fa-file-code text-blue-400"></i><span class="hidden lg:inline">GeoJSON</span>
+            </button>
+            <button id="btn-export-kml" class="flex items-center space-x-2 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition" title="Exportar KML">
+                <i class="fa-solid fa-earth-americas text-amber-400"></i><span class="hidden lg:inline">KML</span>
+            </button>
+            <button id="btn-export-csv" class="flex items-center space-x-2 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition" title="Exportar CSV para Excel">
+                <i class="fa-solid fa-file-csv text-emerald-400"></i><span class="hidden lg:inline">CSV</span>
+            </button>
+            <button id="btn-import-data" class="flex items-center space-x-2 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition" title="Cargar GeoJSON">
+                <i class="fa-solid fa-upload text-purple-400"></i><span class="hidden lg:inline">Cargar</span>
+            </button>
+            <input type="file" id="file-input" accept=".geojson,.json" class="hidden">
+            <button id="btn-share-wa" class="flex items-center space-x-2 px-2.5 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg transition" title="Enviar receta por WhatsApp">
+                <i class="fa-brands fa-whatsapp"></i><span class="hidden xl:inline">WhatsApp</span>
+            </button>
+            <button id="btn-print-report" class="flex items-center space-x-2 px-3 py-1.5 bg-protekta-blue hover:bg-protekta-blueHover text-white text-xs font-bold rounded-lg transition shadow-md">
+                <i class="fa-solid fa-file-invoice"></i><span class="hidden sm:inline">Reporte</span>
+            </button>
+        </div>
+    </header>
+
+    <div class="flex-1 flex overflow-hidden relative">
+
+        <button id="btn-toggle-sidebar" class="md:hidden absolute top-3 left-3 z-30 bg-slate-900 text-white w-11 h-11 rounded-xl shadow-xl border border-slate-700 flex items-center justify-center" aria-label="Abrir panel">
+            <i class="fa-solid fa-bars"></i>
+        </button>
+
+        <!-- SIDEBAR -->
+        <aside id="sidebar" class="w-full md:w-[460px] bg-slate-900 border-r border-slate-800 flex flex-col z-20 absolute md:relative inset-y-0 left-0 transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out shadow-2xl md:shadow-none">
+
+            <div class="flex border-b border-slate-800 bg-slate-950/60 pl-14 md:pl-0">
+                <button data-tab="tab-edit" class="tab-btn active flex-1 py-3 px-1 text-xs font-medium text-center text-protekta-green border-b-2 border-protekta-green bg-slate-900 transition flex flex-col items-center gap-1">
+                    <i class="fa-solid fa-draw-polygon text-sm"></i><span>Mapear</span>
+                </button>
+                <button data-tab="tab-calc" class="tab-btn flex-1 py-3 px-1 text-xs font-medium text-center text-slate-400 hover:text-slate-200 transition flex flex-col items-center gap-1">
+                    <i class="fa-solid fa-calculator text-sm"></i><span>Receta</span>
+                </button>
+                <button data-tab="tab-sectors" class="tab-btn flex-1 py-3 px-1 text-xs font-medium text-center text-slate-400 hover:text-slate-200 transition flex flex-col items-center gap-1">
+                    <i class="fa-solid fa-layer-group text-sm"></i><span>Sectores (<span id="sector-count-badge">0</span>)</span>
+                </button>
+                <button data-tab="tab-prices" class="tab-btn flex-1 py-3 px-1 text-xs font-medium text-center text-slate-400 hover:text-slate-200 transition flex flex-col items-center gap-1">
+                    <i class="fa-solid fa-sliders text-sm"></i><span>Ajustes</span>
+                </button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-4 space-y-4">
+
+                <!-- TAB 1 -->
+                <div id="tab-edit" class="tab-content space-y-4">
+
+                    <div class="bg-slate-800/60 p-3.5 rounded-xl border border-slate-700/60 space-y-2">
+                        <label class="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Tipo de Capa a Trazar</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button id="mode-perimeter" class="mode-btn p-2.5 rounded-lg border border-protekta-blue bg-protekta-blue/20 text-blue-300 text-xs font-semibold flex items-center justify-center gap-2 transition">
+                                <i class="fa-solid fa-vector-square"></i> Perímetro General
+                            </button>
+                            <button id="mode-sector" class="mode-btn p-2.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-400 text-xs font-semibold flex items-center justify-center gap-2 hover:bg-slate-700 transition">
+                                <i class="fa-solid fa-chart-pie"></i> Sector / Zona
+                            </button>
+                        </div>
+                        <p id="mode-instruction" class="text-[11px] text-slate-400 leading-relaxed bg-slate-900/60 p-2 rounded border border-slate-800">
+                            <i class="fa-solid fa-circle-info text-blue-400 mr-1"></i> Toca el mapa para marcar los vértices del límite exterior del campo.
+                        </p>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button id="btn-gps-vertex" class="py-2 bg-slate-800 hover:bg-slate-700 text-emerald-300 text-[11px] font-semibold rounded-lg border border-slate-700 transition">
+                                <i class="fa-solid fa-location-dot"></i> Vértice aquí
+                            </button>
+                            <button id="btn-undo-point" class="py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 text-[11px] font-semibold rounded-lg border border-slate-700 transition">
+                                <i class="fa-solid fa-rotate-left"></i> Deshacer
+                            </button>
+                            <button id="btn-center-all" class="py-2 bg-slate-800 hover:bg-slate-700 text-blue-300 text-[11px] font-semibold rounded-lg border border-slate-700 transition">
+                                <i class="fa-solid fa-expand"></i> Ver todo
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="sector-form-container" class="bg-slate-800/60 p-3.5 rounded-xl border border-slate-700/60 space-y-3">
+                        <div class="flex items-center justify-between pb-2 border-b border-slate-700/60">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
+                                <i class="fa-solid fa-pen-to-square text-protekta-green"></i> <span id="form-title">Datos de Zona y Cultivo</span>
+                            </h3>
+                            <span id="current-type-tag" class="px-2 py-0.5 rounded text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/30">Perímetro Total</span>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="col-span-2">
+                                <label class="text-[11px] text-slate-400 block mb-1 font-medium">Nombre de la Zona / Sector</label>
+                                <input type="text" id="poly-name" placeholder="Ej. Lote Norte - Riego 1" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-protekta-green">
+                            </div>
+                            <div>
+                                <label class="text-[11px] text-slate-400 block mb-1 font-medium">Cultivo</label>
+                                <select id="poly-crop" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-protekta-green"></select>
+                            </div>
+                            <div>
+                                <label class="text-[11px] text-slate-400 block mb-1 font-medium">Meta rendimiento (ton/ha)</label>
+                                <input type="number" step="0.1" min="0" id="poly-yield-target" value="12" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white">
+                            </div>
+                            <div class="col-span-2">
+                                <label class="text-[11px] text-slate-400 block mb-1 font-medium">Sistema de riego</label>
+                                <select id="poly-irrigation" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-protekta-green">
+                                    <option value="goteo">Goteo / cintilla (eficiencia 90%)</option>
+                                    <option value="microaspersion">Microaspersión (eficiencia 85%)</option>
+                                    <option value="aspersion">Aspersión / pivote (eficiencia 75%)</option>
+                                    <option value="gravedad">Gravedad / surcos (eficiencia 55%)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between pt-1">
+                            <label class="text-[11px] text-slate-400 font-medium">Color de identificación:</label>
+                            <input type="color" id="poly-color" value="#2E7D32" class="h-8 w-20 bg-slate-900 border border-slate-700 rounded p-0.5 cursor-pointer">
+                        </div>
+
+                        <div class="pt-2 border-t border-slate-700/60 space-y-2">
+                            <label class="text-[11px] font-bold text-protekta-green uppercase tracking-wider block">Análisis de suelo (laboratorio / campo)</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div><label class="text-[10px] text-slate-400 block">Nitrógeno N-NO₃ (ppm)</label>
+                                    <input type="number" step="0.1" min="0" id="soil-n" value="25" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-slate-200"></div>
+                                <div><label class="text-[10px] text-slate-400 block">Fósforo P Olsen (ppm)</label>
+                                    <input type="number" step="0.1" min="0" id="soil-p" value="15" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-slate-200"></div>
+                                <div><label class="text-[10px] text-slate-400 block">Potasio K intercambiable (ppm)</label>
+                                    <input type="number" step="0.1" min="0" id="soil-k" value="120" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-slate-200"></div>
+                                <div><label class="text-[10px] text-slate-400 block">pH del suelo</label>
+                                    <input type="number" step="0.1" min="0" max="14" id="soil-ph" value="6.8" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-slate-200"></div>
+                                <div><label class="text-[10px] text-slate-400 block">Humedad del suelo (%)</label>
+                                    <input type="number" step="0.1" min="0" id="soil-moisture" value="22" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-slate-200"></div>
+                                <div><label class="text-[10px] text-slate-400 block">Conductividad C.E. (dS/m)</label>
+                                    <input type="number" step="0.01" min="0" id="soil-ec" value="1.2" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-slate-200"></div>
+                            </div>
+                        </div>
+
+                        <div class="pt-2 border-t border-slate-700/60 grid grid-cols-2 gap-2 text-center">
+                            <div class="bg-slate-950/70 p-2 rounded-lg border border-slate-800">
+                                <span class="text-[10px] text-slate-400 block">Superficie mapeada</span>
+                                <span id="current-area" class="text-sm font-extrabold text-protekta-green">0.00 ha</span>
+                                <span id="current-area-m2" class="text-[10px] text-slate-500 block">0 m²</span>
+                            </div>
+                            <div class="bg-slate-950/70 p-2 rounded-lg border border-slate-800">
+                                <span class="text-[10px] text-slate-400 block">Perímetro lineal</span>
+                                <span id="current-perimeter" class="text-sm font-extrabold text-slate-200">0.00 km</span>
+                                <span id="current-perimeter-m" class="text-[10px] text-slate-500 block">0 m</span>
+                            </div>
+                        </div>
+                        <p id="vertex-count" class="text-[10px] text-slate-500 text-center">0 vértices marcados</p>
+
+                        <div class="flex gap-2 pt-1">
+                            <button id="btn-save-polygon" class="flex-1 py-2.5 bg-protekta-green hover:bg-protekta-greenHover text-white text-xs font-bold rounded-lg transition flex items-center justify-center gap-1.5 shadow-md">
+                                <i class="fa-solid fa-floppy-disk"></i> <span id="save-label">Guardar y calcular</span>
+                            </button>
+                            <button id="btn-clear-current" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg border border-slate-700 transition" title="Cancelar / limpiar trazo">
+                                <i class="fa-solid fa-trash-can"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-800/60 p-3.5 rounded-xl border border-slate-700/60 space-y-2">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-keyboard text-blue-400"></i> Ingreso manual por coordenadas
+                        </h3>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div><label class="text-[10px] text-slate-400 block mb-0.5">Latitud (° dec)</label>
+                                <input type="number" step="any" id="manual-lat" placeholder="Ej. 25.7900" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white"></div>
+                            <div><label class="text-[10px] text-slate-400 block mb-0.5">Longitud (° dec)</label>
+                                <input type="number" step="any" id="manual-lng" placeholder="Ej. -108.9850" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white"></div>
+                        </div>
+                        <button id="btn-add-manual-pt" class="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-blue-400 text-xs font-semibold rounded-lg border border-slate-700 transition">
+                            <i class="fa-solid fa-plus text-xs"></i> Insertar vértice GPS
+                        </button>
+                    </div>
+                </div>
+
+                <!-- TAB 2 -->
+                <div id="tab-calc" class="tab-content hidden space-y-4">
+                    <div class="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700 space-y-3">
+                        <div class="flex items-center justify-between border-b border-slate-700 pb-2">
+                            <h3 class="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                                <i class="fa-solid fa-calculator text-emerald-400"></i> Optimizador de insumos
+                            </h3>
+                        </div>
+                        <div>
+                            <label class="text-[11px] text-slate-300 block mb-1 font-medium">Sector:</label>
+                            <select id="calc-sector-select" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-protekta-green">
+                                <option value="">-- Ningún sector --</option>
+                            </select>
+                        </div>
+                        <div id="calc-results-container" class="space-y-3"></div>
+                    </div>
+                </div>
+
+                <!-- TAB 3 -->
+                <div id="tab-sectors" class="tab-content hidden space-y-4">
+                    <div class="bg-gradient-to-br from-slate-800 to-slate-900 p-3.5 rounded-xl border border-slate-700/80 shadow-md">
+                        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Resumen total del predio</h3>
+                        <div class="grid grid-cols-3 gap-2 text-center">
+                            <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                                <span class="text-[10px] text-slate-400 block">Superficie</span>
+                                <span id="total-field-area" class="text-sm font-black text-protekta-green">0.00 ha</span>
+                            </div>
+                            <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                                <span class="text-[10px] text-slate-400 block">Sectores</span>
+                                <span id="total-sectors-count" class="text-sm font-black text-slate-100">0</span>
+                            </div>
+                            <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+                                <span class="text-[10px] text-slate-400 block">Cobertura</span>
+                                <span id="total-coverage" class="text-sm font-black text-blue-300">--</span>
+                            </div>
+                        </div>
+                        <div class="mt-2 pt-2 border-t border-slate-800/80 space-y-1 text-[11px] text-slate-300">
+                            <div class="flex justify-between"><span>Inversión estimada (fertilizante + agua):</span><span id="total-farm-cost" class="font-bold text-emerald-400">$0 MXN</span></div>
+                            <div class="flex justify-between"><span>Ahorro vs. dosis plana sin análisis:</span><span id="total-farm-savings" class="font-bold text-blue-300">$0 MXN</span></div>
+                        </div>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-xs font-bold uppercase tracking-wider text-slate-400 block">Sectores y receta</label>
+                        <div id="sectors-container" class="space-y-2.5"></div>
+                    </div>
+                    <button id="btn-delete-perimeter" class="hidden w-full py-2 bg-slate-800 hover:bg-rose-500/20 text-rose-400 text-xs font-semibold rounded-lg border border-slate-700 transition">
+                        <i class="fa-solid fa-trash-can"></i> Eliminar perímetro general
+                    </button>
+                    <button id="btn-reset-all" class="w-full py-2 bg-slate-800 hover:bg-rose-500/20 text-rose-400 text-xs font-semibold rounded-lg border border-slate-700 transition">
+                        <i class="fa-solid fa-triangle-exclamation"></i> Borrar todo el proyecto
+                    </button>
+                </div>
+
+                <!-- TAB 4 -->
+                <div id="tab-prices" class="tab-content hidden space-y-4">
+                    <div class="bg-slate-800/60 p-3.5 rounded-xl border border-slate-700/60 space-y-3">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5 border-b border-slate-700 pb-2">
+                            <i class="fa-solid fa-dollar-sign text-emerald-400"></i> Precios de insumos (MXN)
+                        </h3>
+                        <div class="space-y-2 text-xs">
+                            <div><label class="text-[10px] text-slate-400 block">Urea 46% N ($/tonelada)</label>
+                                <input type="number" id="price-urea" value="11500" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-white font-mono"></div>
+                            <div><label class="text-[10px] text-slate-400 block">MAP 11-52-00 ($/tonelada)</label>
+                                <input type="number" id="price-map" value="16800" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-white font-mono"></div>
+                            <div><label class="text-[10px] text-slate-400 block">Cloruro de potasio 60% K₂O ($/tonelada)</label>
+                                <input type="number" id="price-kcl" value="14200" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-white font-mono"></div>
+                            <div><label class="text-[10px] text-slate-400 block">Agua de riego ($/m³)</label>
+                                <input type="number" step="0.1" id="price-water" value="2.5" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-white font-mono"></div>
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/60 p-3.5 rounded-xl border border-slate-700/60 space-y-3">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5 border-b border-slate-700 pb-2">
+                            <i class="fa-solid fa-cloud-rain text-blue-400"></i> Parámetros agronómicos
+                        </h3>
+                        <div class="space-y-2 text-xs">
+                            <div><label class="text-[10px] text-slate-400 block">Lluvia efectiva en el ciclo (mm)</label>
+                                <input type="number" step="1" min="0" id="param-rain" value="0" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-white font-mono"></div>
+                            <div><label class="text-[10px] text-slate-400 block">Eficiencia de uso del nitrógeno (%)</label>
+                                <input type="number" step="1" min="30" max="100" id="param-neff" value="75" class="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-white font-mono"></div>
+                        </div>
+                        <button id="btn-update-prices" class="w-full py-2 bg-protekta-blue hover:bg-protekta-blueHover text-white text-xs font-bold rounded-lg transition">
+                            <i class="fa-solid fa-rotate mr-1"></i> Aplicar y recalcular todo
+                        </button>
+                        <p class="text-[10px] text-slate-500 leading-relaxed">
+                            El modelo es una estimación referencial basada en extracción por tonelada y análisis de suelo. Valida la receta final con un agrónomo o con el laboratorio.
+                        </p>
+                    </div>
+
+                    <div class="bg-slate-800/60 p-3.5 rounded-xl border border-slate-700/60 space-y-3">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5 border-b border-slate-700 pb-2">
+                            <i class="fa-solid fa-cloud-sun-rain text-sky-400"></i> Clima del predio
+                        </h3>
+                        <button id="btn-weather" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-bold rounded-lg border border-slate-700 transition">
+                            <i class="fa-solid fa-cloud-arrow-down mr-1"></i> Consultar lluvia y evapotranspiración
+                        </button>
+                        <div id="weather-result" class="text-[11px] text-slate-300 space-y-1.5"></div>
+                    </div>
+
+                    <div class="bg-slate-800/60 p-3.5 rounded-xl border border-slate-700/60 space-y-2">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5 border-b border-slate-700 pb-2">
+                            <i class="fa-solid fa-vial-circle-check text-emerald-400"></i> Verificación del modelo
+                        </h3>
+                        <button id="btn-selftest" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-emerald-300 text-xs font-bold rounded-lg border border-slate-700 transition">
+                            Ejecutar pruebas de cálculo
+                        </button>
+                        <div id="selftest-result" class="text-[10px] space-y-0.5"></div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="p-3 bg-slate-950 border-t border-slate-800 text-[11px] text-slate-400 flex justify-between items-center shrink-0">
+                <span class="flex items-center gap-1.5 font-medium">
+                    <span class="w-2 h-2 rounded-full bg-protekta-green animate-pulse"></span>
+                    <span id="save-status">PROTEKTA GPS & AGRO</span>
+                </span>
+                <span id="cursor-coords" class="font-mono text-slate-500 text-[10px]">Lat: --, Lng: --</span>
+            </div>
+        </aside>
+
+        <!-- MAP -->
+        <main class="flex-1 relative h-full">
+            <div id="map" class="w-full h-full"></div>
+
+            <div class="absolute top-3 right-3 z-[1000] bg-slate-900/90 backdrop-blur-md p-1.5 rounded-xl border border-slate-700/80 shadow-xl flex gap-1">
+                <button id="layer-sat" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-protekta-blue text-white shadow transition"><i class="fa-solid fa-satellite mr-1"></i> Satélite</button>
+                <button id="layer-osm" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition"><i class="fa-solid fa-map mr-1"></i> Calles</button>
+                <button id="btn-measure" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-amber-300 hover:bg-slate-700 transition"><i class="fa-solid fa-ruler-combined mr-1"></i> Medir</button>
+            </div>
+
+            <div id="measure-panel" class="hidden absolute bottom-8 left-3 right-16 sm:right-auto sm:w-80 z-[1000] bg-slate-900/95 backdrop-blur-md p-3 rounded-xl border border-amber-500/40 shadow-2xl space-y-2.5">
+                <div class="flex items-center justify-between">
+                    <h4 class="text-xs font-extrabold text-amber-300 tracking-wider flex items-center gap-1.5"><i class="fa-solid fa-ruler-combined"></i> HERRAMIENTAS DE MEDICIÓN</h4>
+                    <button id="measure-close" class="w-7 h-7 rounded-lg hover:bg-slate-700 text-slate-300" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="grid grid-cols-4 gap-1.5">
+                    <button data-mmode="dist" class="mmode-btn py-1.5 rounded-lg text-[10px] font-semibold border transition"><i class="fa-solid fa-ruler block text-sm mb-0.5"></i>Distancia</button>
+                    <button data-mmode="area" class="mmode-btn py-1.5 rounded-lg text-[10px] font-semibold border transition"><i class="fa-solid fa-draw-polygon block text-sm mb-0.5"></i>Área</button>
+                    <button data-mmode="circle" class="mmode-btn py-1.5 rounded-lg text-[10px] font-semibold border transition"><i class="fa-regular fa-circle block text-sm mb-0.5"></i>Círculo</button>
+                    <button data-mmode="point" class="mmode-btn py-1.5 rounded-lg text-[10px] font-semibold border transition"><i class="fa-solid fa-location-crosshairs block text-sm mb-0.5"></i>Punto</button>
+                </div>
+                <p id="measure-hint" class="text-[10px] text-slate-400 leading-snug"></p>
+                <div id="measure-readout" class="text-[11px] text-slate-200 space-y-1 max-h-44 overflow-y-auto"></div>
+                <div class="grid grid-cols-2 gap-2">
+                    <select id="measure-unit-d" class="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-slate-200">
+                        <option value="auto">Distancia: auto</option><option value="m">Metros</option><option value="km">Kilómetros</option><option value="ft">Pies</option><option value="mi">Millas</option>
+                    </select>
+                    <select id="measure-unit-a" class="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-slate-200">
+                        <option value="auto">Área: auto</option><option value="m2">m²</option><option value="ha">Hectáreas</option><option value="ac">Acres</option>
+                    </select>
+                </div>
+                <div class="grid grid-cols-4 gap-1.5 text-[10px] font-semibold">
+                    <button id="measure-undo" class="py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-lg border border-slate-700" title="Quitar último punto"><i class="fa-solid fa-rotate-left"></i> Deshacer</button>
+                    <button id="measure-clear" class="py-1.5 bg-slate-800 hover:bg-slate-700 text-rose-300 rounded-lg border border-slate-700" title="Borrar medición"><i class="fa-solid fa-eraser"></i> Limpiar</button>
+                    <button id="measure-gps" class="py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 rounded-lg border border-slate-700" title="Agregar mi ubicación GPS"><i class="fa-solid fa-location-dot"></i> GPS</button>
+                    <button id="measure-copy" class="py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 rounded-lg border border-slate-700" title="Copiar resultado"><i class="fa-regular fa-copy"></i> Copiar</button>
+                </div>
+                <button id="measure-to-sector" class="hidden w-full py-1.5 bg-protekta-green hover:bg-protekta-greenHover text-white text-[11px] font-bold rounded-lg transition">
+                    <i class="fa-solid fa-share"></i> Pasar esta forma a sector
+                </button>
+            </div>
+
+            <div class="absolute bottom-6 right-6 z-[1000] bg-slate-900/90 backdrop-blur-md p-3.5 rounded-xl border border-slate-700/80 shadow-2xl max-w-xs hidden sm:block">
+                <div class="flex items-center gap-2 mb-2 pb-1.5 border-b border-slate-800">
+                    <div class="h-5 w-5 bg-white p-0.5 rounded flex items-center justify-center shrink-0">
+                        <svg viewBox="0 0 400 400" class="w-full h-full"><path d="M 200 20 L 340 70 V 210 C 340 290 270 350 200 380 C 130 350 60 290 60 210 V 70 Z" fill="#004B93"/></svg>
+                    </div>
+                    <h4 class="text-xs font-extrabold text-slate-200 tracking-wider">PROTEKTA AGRICULTURA</h4>
+                </div>
+                <div class="text-[11px] space-y-1 text-slate-300">
+                    <div class="flex justify-between gap-6"><span class="text-slate-400">Predio configurado:</span> <span id="info-has-perimeter" class="font-bold text-rose-400">No</span></div>
+                    <div class="flex justify-between gap-6"><span class="text-slate-400">Superficie total:</span> <span id="info-total-area" class="font-bold text-protekta-green">0.00 ha</span></div>
+                    <div class="flex justify-between gap-6"><span class="text-slate-400">Sectores:</span> <span id="info-sector-count" class="font-bold text-slate-200">0</span></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- REPORTE IMPRIMIBLE -->
+    <div id="printable-report" class="hidden">
+        <div class="border-b-2 border-slate-900 pb-4 mb-4 flex justify-between items-center">
+            <div class="flex items-center gap-4">
+                <div class="h-16 w-16 bg-white p-1 rounded-xl border border-slate-300 flex items-center justify-center shrink-0">
+                    <svg viewBox="0 0 400 400" class="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M 200 20 L 340 70 V 210 C 340 290 270 350 200 380 C 130 350 60 290 60 210 V 70 Z" fill="none" stroke="#004B93" stroke-width="26" stroke-linejoin="round"/>
+                        <path d="M 160 110 A 55 55 0 0 1 240 110" fill="none" stroke="#004B93" stroke-width="12" stroke-linecap="round"/>
+                        <circle cx="200" cy="144" r="7" fill="#004B93"/>
+                        <path d="M 200 150 L 280 205 V 270 H 120 V 205 Z" fill="#555555"/>
+                        <path d="M 75 220 C 130 250 270 250 325 220 C 335 270 280 340 200 365 C 120 340 65 270 75 220 Z" fill="#2E7D32"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-black text-slate-900 tracking-tight">PROTEKTA <span style="color:#1B5E20">AGRICULTURA</span></h1>
+                    <p class="text-xs font-bold text-slate-700 uppercase tracking-wide">Sistemas de Seguridad, Smart Home & Tecnología Agrícola</p>
+                    <p class="text-xs text-slate-600 mt-0.5">Receta agronómica de fertilización, volumen de riego y presupuesto por sector</p>
+                </div>
+            </div>
+            <div class="text-right text-xs text-slate-600">
+                <p><strong>Fecha de emisión:</strong> <span id="report-date">--/--/----</span></p>
+                <p><strong>Folio:</strong> PRK-<span id="report-id">0000</span></p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-4 mb-5 text-sm">
+            <div class="border border-slate-300 p-3 rounded-lg bg-slate-50">
+                <h3 class="font-bold mb-1 text-xs uppercase tracking-wider" style="color:#004B93">Métricas de campo</h3>
+                <p class="text-xs text-slate-700"><strong>Área total:</strong> <span id="report-total-area">0.00</span> ha</p>
+                <p class="text-xs text-slate-700"><strong>Sectores:</strong> <span id="report-sectors-num">0</span></p>
+            </div>
+            <div class="border border-slate-300 p-3 rounded-lg bg-slate-50">
+                <h3 class="font-bold mb-1 text-xs uppercase tracking-wider" style="color:#004B93">Fertilizante total</h3>
+                <p class="text-xs text-slate-700"><strong>Urea:</strong> <span id="report-total-urea">0</span> kg</p>
+                <p class="text-xs text-slate-700"><strong>MAP:</strong> <span id="report-total-map">0</span> kg &nbsp; <strong>KCl:</strong> <span id="report-total-kcl">0</span> kg</p>
+            </div>
+            <div class="border border-slate-300 p-3 rounded-lg bg-slate-50">
+                <h3 class="font-bold mb-1 text-xs uppercase tracking-wider" style="color:#004B93">Riego y presupuesto</h3>
+                <p class="text-xs text-slate-700"><strong>Volumen de riego:</strong> <span id="report-total-water">0</span> m³</p>
+                <p class="text-xs text-slate-700"><strong>Costo total estimado:</strong> <span id="report-total-cost" style="font-weight:700;color:#1B5E20">$0 MXN</span></p>
+            </div>
+        </div>
+
+        <h3 class="font-bold text-slate-900 mb-2 text-xs uppercase tracking-wider">Desglose por sector</h3>
+        <table class="w-full text-left text-[10px] border-collapse border border-slate-300 mb-4">
+            <thead>
+                <tr class="bg-slate-100 text-slate-900">
+                    <th class="p-2 border border-slate-300">Sector</th>
+                    <th class="p-2 border border-slate-300">Cultivo / Área</th>
+                    <th class="p-2 border border-slate-300">Suelo N-P-K (ppm)</th>
+                    <th class="p-2 border border-slate-300">Urea (kg)</th>
+                    <th class="p-2 border border-slate-300">MAP (kg)</th>
+                    <th class="p-2 border border-slate-300">KCl (kg)</th>
+                    <th class="p-2 border border-slate-300">Riego (m³)</th>
+                    <th class="p-2 border border-slate-300">Inversión</th>
+                </tr>
+            </thead>
+            <tbody id="report-table-body"></tbody>
+        </table>
+
+        <div id="report-alerts" class="text-[10px] text-slate-700 mb-4"></div>
+
+        <div class="border-t pt-3 text-[10px] text-slate-500 flex justify-between items-center">
+            <p>PROTEKTA - Tecnologías de Precisión Agrícola & Seguridad</p>
+            <p>Estimación referencial; validar con agrónomo antes de aplicar.</p>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[2000] bg-slate-800 text-white text-xs px-4 py-2.5 rounded-xl shadow-2xl border border-slate-700 transition duration-300 opacity-0 pointer-events-none flex items-center gap-2 max-w-[90vw]">
+        <i id="toast-icon" class="fa-solid fa-circle-check text-protekta-green"></i>
+        <span id="toast-msg">Notificación</span>
+    </div>
+
+    <script>
+        // ================== BASE AGRONÓMICA ==================
+        // kg de nutriente por tonelada de rendimiento (N, P2O5, K2O) y lámina de agua por ciclo (mm)
+        const CROP_DATABASE = {
+            Maiz:     { name: 'Maíz grano',        nPerTon: 22,  pPerTon: 9,   kPerTon: 19,  waterMm: 550, defYield: 12 },
+            Trigo:    { name: 'Trigo',             nPerTon: 28,  pPerTon: 11,  kPerTon: 22,  waterMm: 480, defYield: 6 },
+            Soya:     { name: 'Soya',              nPerTon: 15,  pPerTon: 8,   kPerTon: 18,  waterMm: 450, defYield: 3.5 },
+            Tomate:   { name: 'Tomate hortaliza',  nPerTon: 2.8, pPerTon: 1.2, kPerTon: 3.5, waterMm: 650, defYield: 80 },
+            Aguacate: { name: 'Aguacate',          nPerTon: 12,  pPerTon: 4.5, kPerTon: 15,  waterMm: 700, defYield: 18 },
+            Alfalfa:  { name: 'Alfalfa forraje',   nPerTon: 8,   pPerTon: 6,   kPerTon: 24,  waterMm: 850, defYield: 18 },
+            Citricos: { name: 'Cítricos',          nPerTon: 4.5, pPerTon: 1.8, kPerTon: 5.2, waterMm: 600, defYield: 35 },
+            Vid:      { name: 'Vid / uva',         nPerTon: 6.5, pPerTon: 2.5, kPerTon: 8.0, waterMm: 400, defYield: 15 },
+            Otro:     { name: 'Otro / estándar',   nPerTon: 18,  pPerTon: 7,   kPerTon: 15,  waterMm: 500, defYield: 10 }
+        };
+        const IRRIGATION = {
+            goteo:          { name: 'Goteo',        eff: 0.90 },
+            microaspersion: { name: 'Microaspersión', eff: 0.85 },
+            aspersion:      { name: 'Aspersión',    eff: 0.75 },
+            gravedad:       { name: 'Gravedad',     eff: 0.55 }
+        };
+        // Conversión ppm -> kg/ha (capa de 30 cm, densidad aparente 1.3 t/m³ => 1 ppm ≈ 3.9 kg/ha)
+        const AGRO = {
+            ppmToKgHa: 3.9,
+            nMineralFraction: 0.5,   // fracción del N del suelo aprovechable
+            pToP2O5: 2.29, pAvail: 0.15,
+            kToK2O: 1.2,  kAvail: 0.30,
+            pEff: 0.8, kEff: 0.85,    // eficiencia de aplicación P y K
+            ureaN: 0.46, mapP2O5: 0.52, mapN: 0.11, kclK2O: 0.60,
+            // Niveles críticos del análisis (ppm). Bajo "low" se aplica la demanda completa;
+            // sobre "high" solo fertilización de mantenimiento; entre ambos, interpolación lineal.
+            pLow: 8,  pHigh: 20,      // P Olsen
+            kLow: 80, kHigh: 180,     // K intercambiable
+            maintenance: 0.30         // fracción de la demanda en nivel alto (reposición)
+        };
+
+        const STORAGE_KEY = 'protekta_agro_v6';
+        const STORAGE_KEY_OLD = ['protekta_agro_v5'];
+        const SCHEMA_VERSION = 2;
+
+        const state = {
+            activeMode: 'perimeter',
+            perimeter: null,
+            sectors: [],
+            currentPoints: [],
+            editingId: null,
+            prices: { ureaPerTon: 11500, mapPerTon: 16800, kclPerTon: 14200, waterPerM3: 2.5 },
+            params: { rainMm: 0, nEff: 0.75 },
+            map: null, drawLayer: null, perimeterLayer: null, sectorsLayer: null, gpsMarker: null,
+            tileSat: null, tileOsm: null
+        };
+
+        const $ = (id) => document.getElementById(id);
+        const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const fmt = (n) => Math.round(n).toLocaleString('es-MX');
+        const money = (n) => '$' + fmt(n);
+
+        // ================== INICIO ==================
+        window.addEventListener('DOMContentLoaded', () => {
+            fillCropSelect();
+            initMap();
+            setupEventListeners();
+            loadFromStorage();
+            refreshAll();
+            if (state.perimeter || state.sectors.length) fitAll();
+        });
+
+        function fillCropSelect() {
+            $('poly-crop').innerHTML = Object.entries(CROP_DATABASE)
+                .map(([k, c]) => `<option value="${k}">${c.name} (${c.defYield} ton/ha)</option>`).join('');
+        }
+
+        function initMap() {
+            state.map = L.map('map', { center: [25.79, -108.985], zoom: 14, zoomControl: false });
+            L.control.zoom({ position: 'bottomright' }).addTo(state.map);
+
+            state.tileSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: '&copy; Esri World Imagery', maxZoom: 19 });
+            state.tileOsm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap', maxZoom: 19 });
+            state.tileSat.addTo(state.map);
+
+            state.drawLayer = L.layerGroup().addTo(state.map);
+            state.perimeterLayer = L.layerGroup().addTo(state.map);
+            state.sectorsLayer = L.layerGroup().addTo(state.map);
+
+            state.map.on('click', (e) => {
+                const lat = +e.latlng.lat.toFixed(6), lng = +e.latlng.lng.toFixed(6);
+                if (MEASURE.active) measureAddPoint(lat, lng); else addPoint(lat, lng);
+            });
+            state.map.on('mousemove', (e) => {
+                $('cursor-coords').innerText = `Lat: ${e.latlng.lat.toFixed(5)}, Lng: ${e.latlng.lng.toFixed(5)}`;
+            });
+        }
+
+        // ================== DIBUJO ==================
+        function addPoint(lat, lng) {
+            state.currentPoints.push([lat, lng]);
+            renderCurrentDrawing();
+            calculateCurrentStats();
+        }
+
+        function undoPoint() {
+            if (!state.currentPoints.length) return;
+            state.currentPoints.pop();
+            renderCurrentDrawing();
+            calculateCurrentStats();
+        }
+
+        function renderCurrentDrawing() {
+            state.drawLayer.clearLayers();
+            const color = state.activeMode === 'perimeter' ? '#004B93' : ($('poly-color').value || '#2E7D32');
+            const pts = state.currentPoints;
+            if (pts.length > 2) {
+                L.polygon(pts, { color, weight: 3, fillColor: color, fillOpacity: 0.3, dashArray: '4, 4' }).addTo(state.drawLayer);
+            } else if (pts.length === 2) {
+                L.polyline(pts, { color, weight: 3, dashArray: '5, 5' }).addTo(state.drawLayer);
+            }
+            pts.forEach((p, i) => {
+                L.circleMarker(p, { radius: i === 0 ? 7 : 5, color: '#004B93', fillColor: i === 0 ? '#4CAF50' : '#FFFFFF', fillOpacity: 0.95, weight: 2.5 }).addTo(state.drawLayer);
+            });
+            $('vertex-count').innerText = `${pts.length} vértice${pts.length === 1 ? '' : 's'} marcado${pts.length === 1 ? '' : 's'}`;
+        }
+
+        function pointsToPolygon(points) {
+            const ring = points.map(p => [p[1], p[0]]);
+            ring.push([points[0][1], points[0][0]]);
+            return turf.polygon([ring]);
+        }
+
+        function calculateCurrentStats() {
+            if (state.currentPoints.length < 3) {
+                $('current-area').innerText = '0.00 ha';
+                $('current-area-m2').innerText = '0 m²';
+                $('current-perimeter').innerText = '0.00 km';
+                $('current-perimeter-m').innerText = '0 m';
+                return;
+            }
+            try {
+                const poly = pointsToPolygon(state.currentPoints);
+                const areaM2 = turf.area(poly);
+                const perimKm = turf.length(poly, { units: 'kilometers' });
+                $('current-area').innerText = `${(areaM2 / 10000).toFixed(2)} ha`;
+                $('current-area-m2').innerText = `${fmt(areaM2)} m²`;
+                $('current-perimeter').innerText = `${perimKm.toFixed(2)} km`;
+                $('current-perimeter-m').innerText = `${fmt(perimKm * 1000)} m`;
+            } catch (err) { console.error(err); }
+        }
+
+        // ================== MODELO AGRONÓMICO (funciones puras) ==================
+        // No leen `state` ni el DOM: reciben todo por argumento, así se pueden probar solas.
+        const MODEL = {
+            /** Fracción de la demanda que debe cubrir el fertilizante según el nivel del suelo. */
+            levelFactor(value, low, high) {
+                const v = Math.max(0, Number(value) || 0);
+                if (v <= low) return 1;
+                if (v >= high) return AGRO.maintenance;
+                return 1 - (1 - AGRO.maintenance) * ((v - low) / (high - low));
+            },
+
+            /**
+             * @param {{areaHa:number, cropKey:string, yieldTarget:number, soil:object, irrigationKey:string}} inp
+             * @param {{nEff:number, rainMm:number, prices:object}} cfg
+             */
+            compute(inp, cfg) {
+                const { areaHa, cropKey, yieldTarget, soil, irrigationKey } = inp;
+                const crop = CROP_DATABASE[cropKey] || CROP_DATABASE.Otro;
+                const irr = IRRIGATION[irrigationKey] || IRRIGATION.goteo;
+
+                // Demanda del cultivo (kg/ha)
+                const targetN = yieldTarget * crop.nPerTon;
+                const targetP = yieldTarget * crop.pPerTon;   // P2O5
+                const targetK = yieldTarget * crop.kPerTon;   // K2O
+
+                // Aporte del suelo (kg/ha): N por mineralización; P y K por nivel crítico
+                const supplyN = Math.min(targetN, Math.max(0, soil.n) * AGRO.ppmToKgHa * AGRO.nMineralFraction);
+                const fP = MODEL.levelFactor(soil.p, AGRO.pLow, AGRO.pHigh);
+                const fK = MODEL.levelFactor(soil.k, AGRO.kLow, AGRO.kHigh);
+                const supplyP = targetP * (1 - fP);
+                const supplyK = targetK * (1 - fK);
+
+                const build = (sN, sP, sK) => {
+                    const defN = Math.max(0, targetN - sN) / cfg.nEff;
+                    const defP = Math.max(0, targetP - sP) / AGRO.pEff;
+                    const defK = Math.max(0, targetK - sK) / AGRO.kEff;
+                    const mapKg = defP / AGRO.mapP2O5;
+                    const nFromMap = mapKg * AGRO.mapN;
+                    const ureaKg = Math.max(0, defN - nFromMap) / AGRO.ureaN;
+                    const kclKg = defK / AGRO.kclK2O;
+                    return { ureaKg, mapKg, kclKg };
+                };
+                const precise = build(supplyN, supplyP, supplyK);
+                const flat = build(0, 0, 0); // dosis plana: sin crédito del suelo
+
+                // Riego bruto
+                const netMm = Math.max(0, crop.waterMm - cfg.rainMm);
+                const waterM3PerHa = (netMm * 10) / irr.eff;
+                const totalWaterM3 = waterM3PerHa * areaHa;
+
+                const pr = cfg.prices;
+                const fertCost = (u, m, k) => (u * areaHa / 1000) * pr.ureaPerTon
+                                            + (m * areaHa / 1000) * pr.mapPerTon
+                                            + (k * areaHa / 1000) * pr.kclPerTon;
+                const costFert = fertCost(precise.ureaKg, precise.mapKg, precise.kclKg);
+                const costFlat = fertCost(flat.ureaKg, flat.mapKg, flat.kclKg);
+                const costWater = totalWaterM3 * pr.waterPerM3;
+
+                return {
+                    targetN, targetP, targetK, supplyN, supplyP, supplyK,
+                    ureaKgPerHa: precise.ureaKg, mapKgPerHa: precise.mapKg, kclKgPerHa: precise.kclKg,
+                    totalUreaKg: precise.ureaKg * areaHa, totalMapKg: precise.mapKg * areaHa, totalKclKg: precise.kclKg * areaHa,
+                    waterM3PerHa, totalWaterM3, totalWaterLiters: totalWaterM3 * 1000,
+                    irrigationEff: irr.eff, irrigationName: irr.name,
+                    costFert, costWater, totalInputsCost: costFert + costWater,
+                    costFlat, estimatedSavings: Math.max(0, costFlat - costFert),
+                    alerts: MODEL.alerts(soil, areaHa, precise, fP, fK)
+                };
+            },
+
+            alerts(soil, areaHa, precise, fP, fK) {
+                const a = [];
+                if (soil.ph < 5.5) a.push({ level: 'warn', text: `pH ${soil.ph}: suelo ácido. Considera encalado; baja la disponibilidad de P.` });
+                else if (soil.ph > 8.0) a.push({ level: 'warn', text: `pH ${soil.ph}: suelo alcalino. Hay riesgo de bloqueo de P y micronutrientes; usa fuentes acidificantes.` });
+                if (soil.ec > 4) a.push({ level: 'bad', text: `C.E. ${soil.ec} dS/m: salinidad alta. Necesitas lámina de lavado y cultivos tolerantes.` });
+                else if (soil.ec > 2) a.push({ level: 'warn', text: `C.E. ${soil.ec} dS/m: salinidad moderada. Prefiere fertilizantes de bajo índice salino y fracciona más.` });
+                if (soil.moisture < 12) a.push({ level: 'warn', text: `Humedad ${soil.moisture}%: suelo seco. Aplica un riego de presiembra antes de fertilizar.` });
+                if (fP <= AGRO.maintenance + 1e-9) a.push({ level: 'ok', text: `Fósforo alto (${soil.p} ppm): solo se calcula dosis de mantenimiento.` });
+                else if (fP >= 1) a.push({ level: 'warn', text: `Fósforo bajo (${soil.p} ppm): se aplica la demanda completa; conviene localizarlo cerca de la raíz.` });
+                if (fK <= AGRO.maintenance + 1e-9) a.push({ level: 'ok', text: `Potasio alto (${soil.k} ppm): solo se calcula dosis de mantenimiento.` });
+                else if (fK >= 1) a.push({ level: 'warn', text: `Potasio bajo (${soil.k} ppm): se aplica la demanda completa.` });
+                if (areaHa > 0 && precise.ureaKg + precise.mapKg + precise.kclKg < 1) a.push({ level: 'ok', text: 'El suelo cubre la demanda calculada; no se requiere fertilización de fondo.' });
+                return a;
+            }
+        };
+
+        function computeRecipe(areaHa, cropKey, yieldTarget, soil, irrigationKey) {
+            return MODEL.compute(
+                { areaHa, cropKey, yieldTarget, soil, irrigationKey },
+                { nEff: state.params.nEff, rainMm: state.params.rainMm, prices: state.prices });
+        }
+
+        function recipeForProps(p) {
+            return computeRecipe(p.areaHa, p.cropKey, p.yieldTarget, p.soil, p.irrigation);
+        }
+
+        // ================== AUTOPRUEBAS DEL MODELO ==================
+        function runSelfTests() {
+            const cfg = { nEff: 0.75, rainMm: 0, prices: { ureaPerTon: 11500, mapPerTon: 16800, kclPerTon: 14200, waterPerM3: 2.5 } };
+            const base = { areaHa: 10, cropKey: 'Maiz', yieldTarget: 12, soil: { n: 25, p: 15, k: 120, ph: 6.8, moisture: 22, ec: 1.2 }, irrigationKey: 'goteo' };
+            const run = (o, c) => MODEL.compute(Object.assign({}, base, o), Object.assign({}, cfg, c));
+            const near = (a, b, tol) => Math.abs(a - b) <= tol;
+            const tests = [
+                ['Área 0 => insumos y costo en 0', () => { const r = run({ areaHa: 0 }); return r.totalUreaKg === 0 && r.totalWaterM3 === 0 && r.totalInputsCost === 0; }],
+                ['Los totales escalan con la superficie', () => near(run({ areaHa: 20 }).totalUreaKg, 2 * run({ areaHa: 10 }).totalUreaKg, 1e-6)],
+                ['Más fósforo en suelo => menos MAP', () => run({ soil: { ...base.soil, p: 25 } }).totalMapKg < run({ soil: { ...base.soil, p: 5 } }).totalMapKg],
+                ['Más potasio en suelo => menos KCl', () => run({ soil: { ...base.soil, k: 200 } }).totalKclKg < run({ soil: { ...base.soil, k: 50 } }).totalKclKg],
+                ['Nivel P alto => mantenimiento (30% de la demanda)', () => near(run({ soil: { ...base.soil, p: 40 } }).supplyP, 0.7 * run().targetP, 1e-6)],
+                ['Lluvia efectiva reduce el agua de riego', () => run({}, { rainMm: 200 }).totalWaterM3 < run({}, { rainMm: 0 }).totalWaterM3],
+                ['Lluvia mayor a la demanda => riego 0, nunca negativo', () => run({}, { rainMm: 5000 }).totalWaterM3 === 0],
+                ['Gravedad usa más agua que goteo', () => run({ irrigationKey: 'gravedad' }).totalWaterM3 > run({ irrigationKey: 'goteo' }).totalWaterM3],
+                ['La dosis con análisis nunca supera la dosis plana', () => { const r = run(); return r.costFert <= r.costFlat + 1e-6 && r.estimatedSavings >= 0; }],
+                ['Ningún resultado es NaN con suelo en cero', () => Object.values(run({ soil: { n: 0, p: 0, k: 0, ph: 7, moisture: 0, ec: 0 } })).every(v => typeof v !== 'number' || Number.isFinite(v))],
+                ['Maíz 12 t/ha: demanda N = 264 kg/ha', () => near(run().targetN, 264, 1e-9)],
+                ['Mayor eficiencia de N => menos urea', () => run({}, { nEff: 0.9 }).totalUreaKg < run({}, { nEff: 0.6 }).totalUreaKg],
+                ['levelFactor es monótono decreciente', () => MODEL.levelFactor(5, 8, 20) >= MODEL.levelFactor(14, 8, 20) && MODEL.levelFactor(14, 8, 20) >= MODEL.levelFactor(30, 8, 20)]
+            ];
+            const sq = (lat, lng, m) => { const dLat = m / 111195, dLng = m / (111195 * Math.cos(lat * Math.PI / 180)); return [[lat, lng], [lat + dLat, lng], [lat + dLat, lng + dLng], [lat, lng + dLng]]; };
+            tests.push(
+                ['Medir: 1° de latitud ≈ 111.2 km (±0.5%)', () => near(geo.haversine([25, -108], [26, -108]), 111195, 111195 * 0.005)],
+                ['Medir: distancia simétrica y 0 consigo misma', () => geo.haversine([25.79, -108.98], [25.8, -108.97]) === geo.haversine([25.8, -108.97], [25.79, -108.98]) && geo.haversine([25, -108], [25, -108]) === 0],
+                ['Medir: rumbo hacia el este = 90° y al norte = 0°', () => near(geo.bearing([25, -108], [25, -107.9]), 90, 0.2) && near(geo.bearing([25, -108], [25.1, -108]), 0, 1e-6)],
+                ['Medir: destino a 1000 m regresa a 1000 m', () => near(geo.haversine([25.79, -108.98], geo.destination([25.79, -108.98], 37, 1000)), 1000, 0.01)],
+                ['Medir: cuadro 100x100 m ≈ 1 ha (±1%)', () => near(geo.ringAreaM2(sq(25.79, -108.985, 100)) / 10000, 1, 0.01)],
+                ['Medir: círculo de 400 m de radio ≈ 50.27 ha (±0.5%)', () => near(geo.ringAreaM2(geo.circleRing([25.79, -108.985], 400, 180)) / 10000, Math.PI * 400 * 400 / 10000, 0.25)],
+                ['Medir: el área no cambia con el sentido del trazo', () => near(geo.ringAreaM2(sq(25.79, -108.985, 100)), geo.ringAreaM2(sq(25.79, -108.985, 100).reverse()), 1e-6)],
+                ['Medir: perímetro de un cuadro de 100 m ≈ 400 m', () => near(geo.ringPerimeter(sq(25.79, -108.985, 100)), 400, 2)],
+                ['Medir: conversiones de unidades', () => geo.fmtDist(1000, 'km').startsWith('1.000') && geo.fmtDist(1609.344, 'mi').startsWith('1.000') && geo.fmtArea(10000, 'ac').startsWith('2.471') && geo.fmtArea(5000, 'auto').includes('m²') && geo.fmtArea(25000, 'auto').includes('ha')],
+                ['Medir: DMS de 25.5 = 25° 30′ 0.00″', () => geo.dms(25.5, true) === '25° 30′ 0.00″ N']
+            );
+            if (typeof turf !== 'undefined') {
+                tests.push(['Geometría: ~1 ha (100x100 m) mide 1 ha ±2%', () => {
+                    const dLat = 100 / 111320, dLng = 100 / (111320 * Math.cos(25.79 * Math.PI / 180));
+                    const poly = pointsToPolygon([[25.79, -108.985], [25.79 + dLat, -108.985], [25.79 + dLat, -108.985 + dLng], [25.79, -108.985 + dLng]]);
+                    return near(turf.area(poly) / 10000, 1, 0.02);
+                }]);
+            }
+            const results = tests.map(([name, fn]) => { let ok = false, err = ''; try { ok = !!fn(); } catch (e) { err = String(e); } return { name, ok, err }; });
+            return results;
+        }
+
+        function showSelfTests() {
+            const res = runSelfTests();
+            const bad = res.filter(r => !r.ok);
+            console.table(res);
+            showToast(bad.length ? `Fallaron ${bad.length} de ${res.length} pruebas (ver consola).` : `Todas las pruebas del modelo pasaron (${res.length}/${res.length}).`, bad.length ? 'error' : 'success');
+            const box = $('selftest-result');
+            if (box) box.innerHTML = res.map(r => `<div class="${r.ok ? 'text-emerald-400' : 'text-rose-400'}">${r.ok ? '✔' : '✘'} ${esc(r.name)}${r.err ? ' — ' + esc(r.err) : ''}</div>`).join('');
+        }
+
+        // ================== GUARDAR / EDITAR ==================
+        function readSoilForm() {
+            const num = (id, def) => { const v = parseFloat($(id).value); return isNaN(v) ? def : v; };
+            return { n: num('soil-n', 0), p: num('soil-p', 0), k: num('soil-k', 0), ph: num('soil-ph', 7), moisture: num('soil-moisture', 20), ec: num('soil-ec', 1) };
+        }
+
+        function saveCurrentPolygon() {
+            const editing = state.editingId ? state.sectors.find(s => s.properties.id === state.editingId) : null;
+            const hasNewGeometry = state.currentPoints.length >= 3;
+
+            if (!editing && !hasNewGeometry) {
+                showToast('Marca al menos 3 vértices en el mapa.', 'error');
+                return;
+            }
+
+            const cropKey = $('poly-crop').value;
+            const yieldTarget = parseFloat($('poly-yield-target').value) || CROP_DATABASE[cropKey].defYield;
+            const color = $('poly-color').value;
+            const soil = readSoilForm();
+            const irrigation = $('poly-irrigation').value;
+            const name = $('poly-name').value.trim() ||
+                (editing ? editing.properties.name : state.activeMode === 'perimeter' ? 'Límite perimetral total' : `Sector ${state.sectors.length + 1}`);
+
+            if (editing && !hasNewGeometry) {
+                Object.assign(editing.properties, { name, cropKey, cropName: CROP_DATABASE[cropKey].name, yieldTarget, color, soil, irrigation });
+                editing.properties.recipe = recipeForProps(editing.properties);
+                showToast(`Sector "${name}" actualizado.`, 'success');
+            } else {
+                let poly;
+                try { poly = pointsToPolygon(state.currentPoints); } catch (e) { showToast('Polígono inválido.', 'error'); return; }
+                try {
+                    if (turf.kinks(poly).features.length > 0) {
+                        showToast('El trazo se cruza a sí mismo. Usa Deshacer y corrige los vértices.', 'error');
+                        return;
+                    }
+                } catch (e) { /* kinks no disponible: continuar */ }
+
+                const areaM2 = turf.area(poly);
+                const props = {
+                    id: editing ? editing.properties.id : Date.now().toString(),
+                    name, cropKey, cropName: CROP_DATABASE[cropKey].name, yieldTarget, color, irrigation,
+                    type: editing ? 'sector' : state.activeMode,
+                    areaHa: areaM2 / 10000, areaM2, perimeterKm: turf.length(poly, { units: 'kilometers' }), soil
+                };
+                props.recipe = recipeForProps(props);
+                const feature = { type: 'Feature', properties: props, geometry: poly.geometry };
+
+                if (editing) {
+                    state.sectors[state.sectors.indexOf(editing)] = feature;
+                    showToast(`Geometría de "${name}" actualizada.`, 'success');
+                } else if (state.activeMode === 'perimeter') {
+                    state.perimeter = feature;
+                    showToast('Perímetro del predio guardado.', 'success');
+                } else {
+                    state.sectors.push(feature);
+                    let msg = `Sector "${name}" registrado.`;
+                    if (state.perimeter) {
+                        try {
+                            if (!turf.booleanPointInPolygon(turf.centroid(feature), state.perimeter)) msg += ' Aviso: queda fuera del perímetro.';
+                        } catch (e) {}
+                    }
+                    showToast(msg, 'success');
+                }
+            }
+
+            cancelEditing();
+            clearCurrentDrawing();
+            refreshAll();
+        }
+
+        function startEditSector(id) {
+            const sec = state.sectors.find(s => s.properties.id === id);
+            if (!sec) return;
+            const p = sec.properties;
+            state.editingId = id;
+            setMode('sector', true);
+            $('poly-name').value = p.name;
+            $('poly-crop').value = p.cropKey;
+            $('poly-yield-target').value = p.yieldTarget;
+            $('poly-color').value = p.color;
+            $('poly-irrigation').value = p.irrigation || 'goteo';
+            $('soil-n').value = p.soil.n; $('soil-p').value = p.soil.p; $('soil-k').value = p.soil.k;
+            $('soil-ph').value = p.soil.ph; $('soil-moisture').value = p.soil.moisture; $('soil-ec').value = p.soil.ec;
+            $('form-title').innerText = 'Editando sector';
+            $('save-label').innerText = 'Actualizar sector';
+            $('mode-instruction').innerHTML = '<i class="fa-solid fa-pen text-amber-400 mr-1"></i> Edita los datos y guarda. Si marcas 3 o más vértices nuevos, se reemplaza la forma del sector.';
+            switchTab('tab-edit');
+            zoomToSector(id);
+        }
+
+        function cancelEditing() {
+            state.editingId = null;
+            $('form-title').innerText = 'Datos de zona y cultivo';
+            $('save-label').innerText = 'Guardar y calcular';
+        }
+
+        function clearCurrentDrawing() {
+            state.currentPoints = [];
+            state.drawLayer.clearLayers();
+            $('poly-name').value = '';
+            renderCurrentDrawing();
+            calculateCurrentStats();
+        }
+
+        // ================== CAPAS ==================
+        function redrawSavedLayers() {
+            state.perimeterLayer.clearLayers();
+            state.sectorsLayer.clearLayers();
+
+            if (state.perimeter) {
+                L.geoJSON(state.perimeter, { style: { color: '#004B93', weight: 4, fillColor: '#004B93', fillOpacity: 0.06, dashArray: '6, 6' }, interactive: false }).addTo(state.perimeterLayer);
+            }
+
+            state.sectors.forEach((sec) => {
+                const p = sec.properties, r = p.recipe;
+                const layer = L.geoJSON(sec, { style: { color: p.color, weight: 2.5, fillColor: p.color, fillOpacity: 0.45 } }).addTo(state.sectorsLayer);
+                layer.bindTooltip(esc(p.name), { permanent: true, direction: 'center', className: 'text-[10px] font-bold' });
+                layer.bindPopup(`
+                    <div style="font-family:sans-serif;font-size:12px;min-width:200px">
+                        <b style="font-size:14px">${esc(p.name)}</b><br>
+                        Cultivo: <b>${esc(p.cropName)}</b> (${p.yieldTarget} t/ha)<br>
+                        Superficie: <b>${p.areaHa.toFixed(2)} ha</b><br>
+                        <hr style="margin:4px 0">
+                        Urea: <b>${fmt(r.totalUreaKg)} kg</b><br>
+                        MAP: <b>${fmt(r.totalMapKg)} kg</b> | KCl: <b>${fmt(r.totalKclKg)} kg</b><br>
+                        Riego (${esc(r.irrigationName)}): <b>${fmt(r.totalWaterM3)} m³</b><br>
+                        Inversión: <b>${money(r.totalInputsCost)} MXN</b>
+                    </div>`);
+            });
+        }
+
+        // ================== PANEL RECETA ==================
+        function updateCalculatorDropdown() {
+            const select = $('calc-sector-select');
+            const prev = select.value;
+            select.innerHTML = '<option value="">-- Selecciona un sector --</option>';
+            state.sectors.forEach(sec => {
+                const opt = document.createElement('option');
+                opt.value = sec.properties.id;
+                opt.textContent = `${sec.properties.name} (${sec.properties.cropName} - ${sec.properties.areaHa.toFixed(2)} ha)`;
+                select.appendChild(opt);
+            });
+            if (prev && state.sectors.some(s => s.properties.id === prev)) select.value = prev;
+            else if (state.sectors.length) select.value = state.sectors[0].properties.id;
+
+            if (select.value) renderCalculatorDetails(select.value);
+            else $('calc-results-container').innerHTML = `
+                <div class="text-center py-8 text-slate-500 text-xs">
+                    <i class="fa-solid fa-wheat-awn-circle-exclamation text-3xl mb-2 block opacity-30"></i>
+                    Aún no hay sectores. Mapea uno en la pestaña Mapear.
+                </div>`;
+        }
+
+        function alertHtml(alerts) {
+            if (!alerts.length) return '';
+            const style = { ok: 'border-emerald-800 bg-emerald-950/40 text-emerald-300', warn: 'border-amber-800 bg-amber-950/40 text-amber-300', bad: 'border-rose-800 bg-rose-950/40 text-rose-300' };
+            const icon = { ok: 'fa-circle-check', warn: 'fa-triangle-exclamation', bad: 'fa-circle-exclamation' };
+            return `<div class="space-y-1.5">` + alerts.map(a =>
+                `<div class="text-[11px] p-2 rounded-lg border ${style[a.level]} flex gap-2"><i class="fa-solid ${icon[a.level]} mt-0.5"></i><span>${esc(a.text)}</span></div>`).join('') + `</div>`;
+        }
+
+        function renderCalculatorDetails(sectorId) {
+            const sec = state.sectors.find(s => s.properties.id === sectorId);
+            if (!sec) return;
+            const p = sec.properties, r = p.recipe, s = p.soil;
+            // Fraccionamiento: N en 3 aplicaciones; P y MAP al fondo; K en 2
+            const split = (v, parts) => parts.map(x => fmt(v * x)).join(' / ');
+
+            $('calc-results-container').innerHTML = `
+                <div class="bg-slate-900 p-3 rounded-lg border border-slate-700 space-y-1">
+                    <div class="flex justify-between items-center gap-2">
+                        <h4 class="font-bold text-sm text-slate-100 truncate">${esc(p.name)}</h4>
+                        <span class="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded font-mono shrink-0">${p.areaHa.toFixed(2)} ha</span>
+                    </div>
+                    <p class="text-xs text-slate-400">Meta: <b>${p.yieldTarget} t/ha</b> de ${esc(p.cropName)} · Riego: ${esc(r.irrigationName)}</p>
+                </div>
+
+                ${alertHtml(r.alerts)}
+
+                <div class="bg-slate-950/80 p-3 rounded-lg border border-slate-800 space-y-2">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Balance nutricional (kg/ha)</span>
+                    <table class="w-full text-[10px] text-center">
+                        <thead class="text-slate-500"><tr><th></th><th>Demanda</th><th>Aporte suelo</th><th>Aplicar*</th></tr></thead>
+                        <tbody class="text-slate-200">
+                            <tr><td class="text-emerald-400 font-bold text-left">N</td><td>${fmt(r.targetN)}</td><td>${fmt(r.supplyN)}</td><td class="font-bold">${fmt(Math.max(0, r.targetN - r.supplyN) / state.params.nEff)}</td></tr>
+                            <tr><td class="text-amber-400 font-bold text-left">P₂O₅</td><td>${fmt(r.targetP)}</td><td>${fmt(r.supplyP)}</td><td class="font-bold">${fmt(Math.max(0, r.targetP - r.supplyP) / AGRO.pEff)}</td></tr>
+                            <tr><td class="text-purple-400 font-bold text-left">K₂O</td><td>${fmt(r.targetK)}</td><td>${fmt(r.supplyK)}</td><td class="font-bold">${fmt(Math.max(0, r.targetK - r.supplyK) / AGRO.kEff)}</td></tr>
+                        </tbody>
+                    </table>
+                    <p class="text-[9px] text-slate-500">*Ya corregido por eficiencia de aplicación. Suelo: ${s.n} / ${s.p} / ${s.k} ppm (N / P / K).</p>
+                </div>
+
+                <div class="bg-slate-950/80 p-3 rounded-lg border border-slate-800 space-y-2">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-protekta-green block">Fertilizante comercial</span>
+                    <div class="space-y-1.5 text-xs">
+                        ${[['Urea (46% N)', r.ureaKgPerHa, r.totalUreaKg], ['MAP 11-52-00', r.mapKgPerHa, r.totalMapKg], ['Cloruro de potasio (60% K₂O)', r.kclKgPerHa, r.totalKclKg]].map(([n, ha, tot]) => `
+                        <div class="flex justify-between items-center bg-slate-900 p-2 rounded border border-slate-800">
+                            <div><span class="font-bold text-slate-200 block">${n}</span><span class="text-[10px] text-slate-400">${fmt(ha)} kg/ha</span></div>
+                            <span class="text-sm font-extrabold text-slate-100">${fmt(tot)} <span class="text-xs font-normal text-slate-400">kg total</span></span>
+                        </div>`).join('')}
+                    </div>
+                    <div class="text-[10px] text-slate-400 bg-slate-900 p-2 rounded border border-slate-800 leading-relaxed">
+                        <b class="text-slate-300">Calendario sugerido (kg totales):</b><br>
+                        Urea en 3 dosis (30/40/30%): ${split(r.totalUreaKg, [0.3, 0.4, 0.3])}<br>
+                        MAP al fondo (siembra): ${fmt(r.totalMapKg)}<br>
+                        KCl en 2 dosis (50/50%): ${split(r.totalKclKg, [0.5, 0.5])}
+                    </div>
+                </div>
+
+                <div class="bg-blue-950/30 p-3 rounded-lg border border-blue-900/50 space-y-2">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-blue-400 block">Agua de riego (eficiencia ${Math.round(r.irrigationEff * 100)}%)</span>
+                    <div class="grid grid-cols-2 gap-2 text-center">
+                        <div class="bg-slate-900/80 p-2 rounded border border-slate-800">
+                            <span class="text-[10px] text-slate-400 block">Total</span>
+                            <span class="text-sm font-black text-blue-300">${fmt(r.totalWaterM3)} m³</span>
+                        </div>
+                        <div class="bg-slate-900/80 p-2 rounded border border-slate-800">
+                            <span class="text-[10px] text-slate-400 block">Por hectárea</span>
+                            <span class="text-xs font-bold text-blue-200">${fmt(r.waterM3PerHa)} m³/ha</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-emerald-950/30 p-3 rounded-lg border border-emerald-900/50 space-y-1.5 text-xs">
+                    <div class="flex justify-between"><span class="text-slate-400">Fertilizante:</span><b class="text-slate-200">${money(r.costFert)}</b></div>
+                    <div class="flex justify-between"><span class="text-slate-400">Agua:</span><b class="text-slate-200">${money(r.costWater)}</b></div>
+                    <div class="flex justify-between pt-1 border-t border-emerald-900/40"><span class="text-slate-300">Inversión total:</span><b class="text-base text-emerald-400">${money(r.totalInputsCost)} MXN</b></div>
+                    <div class="flex justify-between text-[11px]"><span class="text-slate-400">Ahorro vs. dosis plana sin análisis:</span><b class="text-blue-300">${money(r.estimatedSavings)} MXN</b></div>
+                </div>`;
+        }
+
+        // ================== LISTA DE SECTORES ==================
+        function updateSectorsList() {
+            const container = $('sectors-container');
+            $('sector-count-badge').innerText = state.sectors.length;
+            $('btn-delete-perimeter').classList.toggle('hidden', !state.perimeter);
+
+            if (!state.sectors.length) {
+                container.innerHTML = `<div class="text-center py-8 text-slate-500 text-xs"><i class="fa-solid fa-shapes text-3xl mb-2 block opacity-30"></i>No hay sectores guardados.</div>`;
+                return;
+            }
+            container.innerHTML = state.sectors.map(sec => {
+                const p = sec.properties, r = p.recipe;
+                return `
+                <div class="bg-slate-800/80 p-3 rounded-xl border border-slate-700/70 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span class="w-3.5 h-3.5 rounded-full border border-white/20 shrink-0" style="background-color:${esc(p.color)}"></span>
+                            <span class="font-bold text-xs text-slate-100 truncate max-w-[170px]">${esc(p.name)}</span>
+                        </div>
+                        <div class="flex items-center gap-1 shrink-0">
+                            <button data-act="zoom" data-id="${esc(p.id)}" class="w-8 h-8 hover:bg-slate-700 text-slate-300 rounded text-xs" title="Centrar"><i class="fa-solid fa-magnifying-glass-location"></i></button>
+                            <button data-act="calc" data-id="${esc(p.id)}" class="w-8 h-8 hover:bg-slate-700 text-emerald-300 rounded text-xs" title="Ver receta"><i class="fa-solid fa-calculator"></i></button>
+                            <button data-act="edit" data-id="${esc(p.id)}" class="w-8 h-8 hover:bg-slate-700 text-amber-300 rounded text-xs" title="Editar"><i class="fa-solid fa-pen"></i></button>
+                            <button data-act="del" data-id="${esc(p.id)}" class="w-8 h-8 hover:bg-rose-500/20 text-rose-400 rounded text-xs" title="Eliminar"><i class="fa-solid fa-trash-can"></i></button>
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-slate-400">${esc(p.cropName)} · ${p.yieldTarget} t/ha</p>
+                    <div class="grid grid-cols-4 gap-1 text-center bg-slate-950/60 p-1.5 rounded-lg text-[10px]">
+                        <div><span class="text-slate-400 block">Área</span><span class="font-bold text-protekta-green">${p.areaHa.toFixed(2)} ha</span></div>
+                        <div><span class="text-slate-400 block">Urea</span><span class="font-bold text-slate-200">${fmt(r.totalUreaKg)} kg</span></div>
+                        <div><span class="text-slate-400 block">Riego</span><span class="font-bold text-blue-400">${fmt(r.totalWaterM3)} m³</span></div>
+                        <div><span class="text-slate-400 block">Costo</span><span class="font-bold text-emerald-400">${money(r.totalInputsCost)}</span></div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function updateGlobalStats() {
+            const sectorsArea = state.sectors.reduce((s, x) => s + x.properties.areaHa, 0);
+            const totalArea = state.perimeter ? state.perimeter.properties.areaHa : sectorsArea;
+            const cost = state.sectors.reduce((s, x) => s + x.properties.recipe.totalInputsCost, 0);
+            const savings = state.sectors.reduce((s, x) => s + x.properties.recipe.estimatedSavings, 0);
+
+            $('total-field-area').innerText = `${totalArea.toFixed(2)} ha`;
+            $('total-sectors-count').innerText = state.sectors.length;
+            $('total-coverage').innerText = state.perimeter && totalArea > 0 ? `${Math.min(100, sectorsArea / totalArea * 100).toFixed(0)}%` : '--';
+            $('total-farm-cost').innerText = `${money(cost)} MXN`;
+            $('total-farm-savings').innerText = `${money(savings)} MXN`;
+            $('info-has-perimeter').innerText = state.perimeter ? 'Sí' : 'No';
+            $('info-has-perimeter').className = state.perimeter ? 'font-bold text-emerald-400' : 'font-bold text-rose-400';
+            $('info-total-area').innerText = `${totalArea.toFixed(2)} ha`;
+            $('info-sector-count').innerText = state.sectors.length;
+        }
+
+        function refreshAll() {
+            redrawSavedLayers();
+            updateSectorsList();
+            updateCalculatorDropdown();
+            updateGlobalStats();
+            saveToStorage();
+        }
+
+        // ================== ACCIONES ==================
+        function deleteSector(id) {
+            if (!confirm('¿Eliminar este sector?')) return;
+            state.sectors = state.sectors.filter(s => s.properties.id !== id);
+            if (state.editingId === id) cancelEditing();
+            refreshAll();
+            showToast('Sector eliminado.', 'info');
+        }
+
+        function zoomToSector(id) {
+            const sec = state.sectors.find(s => s.properties.id === id);
+            if (!sec) return;
+            const b = turf.bbox(sec);
+            state.map.fitBounds([[b[1], b[0]], [b[3], b[2]]], { padding: [30, 30] });
+            if (window.innerWidth < 768) $('sidebar').classList.add('-translate-x-full');
+        }
+
+        function fitAll() {
+            const feats = [];
+            if (state.perimeter) feats.push(state.perimeter);
+            state.sectors.forEach(s => feats.push(s));
+            if (!feats.length) return showToast('No hay nada que mostrar todavía.', 'info');
+            const b = turf.bbox(turf.featureCollection(feats));
+            state.map.fitBounds([[b[1], b[0]], [b[3], b[2]]], { padding: [30, 30] });
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(b => {
+                const on = b.getAttribute('data-tab') === tabId;
+                b.classList.toggle('active', on);
+                b.classList.toggle('text-protekta-green', on);
+                b.classList.toggle('border-b-2', on);
+                b.classList.toggle('border-protekta-green', on);
+                b.classList.toggle('bg-slate-900', on);
+                b.classList.toggle('text-slate-400', !on);
+            });
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('hidden', c.id !== tabId));
+        }
+
+        function setMode(mode, keepForm) {
+            state.activeMode = mode;
+            const bp = $('mode-perimeter'), bs = $('mode-sector'), tag = $('current-type-tag');
+            const off = 'mode-btn p-2.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-400 text-xs font-semibold flex items-center justify-center gap-2 hover:bg-slate-700 transition';
+            if (mode === 'perimeter') {
+                bp.className = 'mode-btn p-2.5 rounded-lg border border-protekta-blue bg-protekta-blue/20 text-blue-300 text-xs font-semibold flex items-center justify-center gap-2 transition';
+                bs.className = off;
+                tag.innerText = 'Perímetro total';
+                tag.className = 'px-2 py-0.5 rounded text-[10px] bg-blue-500/20 text-blue-300 border border-blue-500/30';
+                $('mode-instruction').innerHTML = '<i class="fa-solid fa-circle-info text-blue-400 mr-1"></i> Toca el mapa para marcar los vértices del límite exterior del campo.';
+            } else {
+                bs.className = 'mode-btn p-2.5 rounded-lg border border-protekta-green bg-protekta-green/20 text-emerald-300 text-xs font-semibold flex items-center justify-center gap-2 transition';
+                bp.className = off;
+                tag.innerText = 'Sector agronómico';
+                tag.className = 'px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+                $('mode-instruction').innerHTML = '<i class="fa-solid fa-circle-info text-emerald-400 mr-1"></i> Traza una zona de manejo (lote, cuadro de riego) con su cultivo y análisis de suelo.';
+            }
+            if (!keepForm) { cancelEditing(); clearCurrentDrawing(); }
+        }
+
+        // ================== PERSISTENCIA ==================
+        let _saveTimer = null;
+        function saveToStorage() {
+            clearTimeout(_saveTimer);
+            _saveTimer = setTimeout(() => {
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                        schema: SCHEMA_VERSION, savedAt: new Date().toISOString(),
+                        perimeter: state.perimeter, sectors: state.sectors, prices: state.prices, params: state.params
+                    }));
+                    $('save-status').innerText = 'Guardado en este dispositivo';
+                } catch (e) { $('save-status').innerText = 'Sin guardado automático'; }
+            }, 250);
+        }
+        window.addEventListener('pagehide', () => { try { clearTimeout(_saveTimer); localStorage.setItem(STORAGE_KEY, JSON.stringify({ schema: SCHEMA_VERSION, savedAt: new Date().toISOString(), perimeter: state.perimeter, sectors: state.sectors, prices: state.prices, params: state.params })); } catch (e) {} });
+
+        function loadFromStorage() {
+            try {
+                let raw = localStorage.getItem(STORAGE_KEY);
+                if (!raw) { // migración desde versiones anteriores
+                    for (const k of STORAGE_KEY_OLD) { raw = localStorage.getItem(k); if (raw) break; }
+                }
+                if (!raw) return;
+                const d = JSON.parse(raw);
+                state.perimeter = d.perimeter || null;
+                state.sectors = Array.isArray(d.sectors) ? d.sectors : [];
+                if (d.prices) state.prices = Object.assign(state.prices, d.prices);
+                if (d.params) state.params = Object.assign(state.params, d.params);
+                $('price-urea').value = state.prices.ureaPerTon;
+                $('price-map').value = state.prices.mapPerTon;
+                $('price-kcl').value = state.prices.kclPerTon;
+                $('price-water').value = state.prices.waterPerM3;
+                $('param-rain').value = state.params.rainMm;
+                $('param-neff').value = Math.round(state.params.nEff * 100);
+                // Recalcular con el modelo vigente (si cambió la fórmula, los datos viejos se actualizan)
+                state.sectors.forEach(sec => {
+                    const p = sec.properties;
+                    if (p && p.soil && CROP_DATABASE[p.cropKey]) p.recipe = recipeForProps(p);
+                });
+            } catch (e) { console.error('No se pudo restaurar el proyecto', e); }
+        }
+
+        // ================== EXPORTAR / IMPORTAR ==================
+        function download(content, mime, filename) {
+            const blob = new Blob([content], { type: mime });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+        const today = () => new Date().toISOString().slice(0, 10);
+        const allFeatures = () => [].concat(state.perimeter ? [state.perimeter] : [], state.sectors);
+
+        function exportGeoJSON() {
+            const f = allFeatures();
+            if (!f.length) return showToast('No hay elementos para exportar.', 'error');
+            download(JSON.stringify({ type: 'FeatureCollection', features: f }, null, 2), 'application/json', `PROTEKTA_Agro_${today()}.geojson`);
+            showToast('GeoJSON exportado.', 'success');
+        }
+
+        function exportKML() {
+            const f = allFeatures();
+            if (!f.length) return showToast('No hay sectores para KML.', 'error');
+            let kml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>PROTEKTA AGRICULTURA</name>`;
+            f.forEach(x => {
+                const coords = x.geometry.coordinates[0].map(c => `${c[0]},${c[1]},0`).join(' ');
+                const r = x.properties.recipe || {};
+                kml += `<Placemark><name>${esc(x.properties.name)}</name><description>${esc(`Cultivo: ${x.properties.cropName} | Área: ${x.properties.areaHa.toFixed(2)} ha | Urea: ${Math.round(r.totalUreaKg || 0)} kg | Agua: ${Math.round(r.totalWaterM3 || 0)} m3`)}</description><Polygon><outerBoundaryIs><LinearRing><coordinates>${coords}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>`;
+            });
+            kml += `</Document></kml>`;
+            download(kml, 'application/vnd.google-earth.kml+xml', `PROTEKTA_Agro_${today()}.kml`);
+            showToast('KML generado.', 'success');
+        }
+
+        function exportCSV() {
+            if (!state.sectors.length) return showToast('No hay sectores para exportar.', 'error');
+            const head = ['Sector', 'Cultivo', 'Meta t/ha', 'Area ha', 'N ppm', 'P ppm', 'K ppm', 'pH', 'CE dS/m', 'Urea kg', 'MAP kg', 'KCl kg', 'Riego m3', 'Costo fertilizante MXN', 'Costo agua MXN', 'Total MXN'];
+            const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
+            const rows = state.sectors.map(s => {
+                const p = s.properties, r = p.recipe, so = p.soil;
+                return [p.name, p.cropName, p.yieldTarget, p.areaHa.toFixed(2), so.n, so.p, so.k, so.ph, so.ec,
+                    Math.round(r.totalUreaKg), Math.round(r.totalMapKg), Math.round(r.totalKclKg), Math.round(r.totalWaterM3),
+                    Math.round(r.costFert), Math.round(r.costWater), Math.round(r.totalInputsCost)].map(q).join(',');
+            });
+            download('\ufeff' + [head.map(q).join(',')].concat(rows).join('\n'), 'text/csv;charset=utf-8', `PROTEKTA_Receta_${today()}.csv`);
+            showToast('CSV exportado (abre en Excel).', 'success');
+        }
+
+        function importGeoJSON(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const gj = JSON.parse(evt.target.result);
+                    if (gj.type !== 'FeatureCollection' || !Array.isArray(gj.features)) throw new Error('formato');
+                    let perimeter = null; const sectors = [];
+                    gj.features.forEach((f, i) => {
+                        if (!f.geometry || f.geometry.type !== 'Polygon') return;
+                        const p = f.properties = f.properties || {};
+                        const areaM2 = turf.area(f);
+                        p.id = String(p.id || (Date.now() + '-' + i));
+                        p.name = p.name || 'Sector importado';
+                        if (!CROP_DATABASE[p.cropKey]) p.cropKey = 'Maiz';
+                        p.cropName = CROP_DATABASE[p.cropKey].name;
+                        p.yieldTarget = parseFloat(p.yieldTarget) || CROP_DATABASE[p.cropKey].defYield;
+                        p.color = /^#[0-9a-f]{6}$/i.test(p.color || '') ? p.color : '#2E7D32';
+                        p.irrigation = IRRIGATION[p.irrigation] ? p.irrigation : 'goteo';
+                        p.areaM2 = areaM2; p.areaHa = areaM2 / 10000;
+                        p.soil = Object.assign({ n: 20, p: 15, k: 120, ph: 7, moisture: 20, ec: 1 }, p.soil || {});
+                        p.recipe = recipeForProps(p);
+                        if (p.type === 'perimeter') perimeter = f; else { p.type = 'sector'; sectors.push(f); }
+                    });
+                    if (!perimeter && !sectors.length) throw new Error('vacío');
+                    state.perimeter = perimeter; state.sectors = sectors;
+                    refreshAll(); fitAll();
+                    showToast('Archivo importado correctamente.', 'success');
+                } catch (err) { showToast('El archivo no es un GeoJSON válido de PROTEKTA.', 'error'); }
+                e.target.value = '';
+            };
+            reader.readAsText(file);
+        }
+
+        // ================== REPORTE Y WHATSAPP ==================
+        function generatePrintReport() {
+            if (!state.sectors.length) return showToast('Primero guarda al menos un sector.', 'error');
+            const sum = (k) => state.sectors.reduce((s, x) => s + x.properties.recipe[k], 0);
+            const totalArea = state.perimeter ? state.perimeter.properties.areaHa : state.sectors.reduce((s, x) => s + x.properties.areaHa, 0);
+
+            $('report-date').innerText = new Date().toLocaleDateString('es-MX');
+            $('report-id').innerText = Date.now().toString().slice(-6);
+            $('report-total-area').innerText = totalArea.toFixed(2);
+            $('report-sectors-num').innerText = state.sectors.length;
+            $('report-total-urea').innerText = fmt(sum('totalUreaKg'));
+            $('report-total-map').innerText = fmt(sum('totalMapKg'));
+            $('report-total-kcl').innerText = fmt(sum('totalKclKg'));
+            $('report-total-water').innerText = fmt(sum('totalWaterM3'));
+            $('report-total-cost').innerText = `${money(sum('totalInputsCost'))} MXN`;
+
+            $('report-table-body').innerHTML = state.sectors.map(sec => {
+                const p = sec.properties, r = p.recipe, s = p.soil;
+                const td = 'class="p-2 border border-slate-300"';
+                return `<tr><td ${td}><b>${esc(p.name)}</b></td><td ${td}>${esc(p.cropName)} (${p.areaHa.toFixed(2)} ha)</td><td ${td}>${s.n} / ${s.p} / ${s.k}</td><td ${td}>${fmt(r.totalUreaKg)}</td><td ${td}>${fmt(r.totalMapKg)}</td><td ${td}>${fmt(r.totalKclKg)}</td><td ${td}>${fmt(r.totalWaterM3)}</td><td ${td}><b>${money(r.totalInputsCost)}</b></td></tr>`;
+            }).join('');
+
+            const alerts = state.sectors.flatMap(sec => sec.properties.recipe.alerts.filter(a => a.level !== 'ok').map(a => `<li><b>${esc(sec.properties.name)}:</b> ${esc(a.text)}</li>`));
+            $('report-alerts').innerHTML = alerts.length ? `<b>Observaciones agronómicas:</b><ul class="list-disc pl-5">${alerts.join('')}</ul>` : '';
+
+            window.print();
+        }
+
+        function shareWhatsApp() {
+            if (!state.sectors.length) return showToast('Primero guarda al menos un sector.', 'error');
+            const lines = ['*PROTEKTA AGRICULTURA - Receta*', new Date().toLocaleDateString('es-MX'), ''];
+            let total = 0;
+            state.sectors.forEach(s => {
+                const p = s.properties, r = p.recipe;
+                total += r.totalInputsCost;
+                lines.push(`*${p.name}* (${p.cropName}, ${p.areaHa.toFixed(2)} ha)`,
+                    `• Urea: ${fmt(r.totalUreaKg)} kg`, `• MAP: ${fmt(r.totalMapKg)} kg`, `• KCl: ${fmt(r.totalKclKg)} kg`,
+                    `• Riego: ${fmt(r.totalWaterM3)} m³`, `• Inversión: ${money(r.totalInputsCost)} MXN`, '');
+            });
+            lines.push(`*Total estimado: ${money(total)} MXN*`);
+            window.open('https://wa.me/?text=' + encodeURIComponent(lines.join('\n')), '_blank');
+        }
+
+        // ================== GPS ==================
+        function getPosition(cb) {
+            if (!navigator.geolocation) return showToast('Geolocalización no disponible.', 'error');
+            showToast('Buscando señal GPS...', 'info');
+            navigator.geolocation.getCurrentPosition(
+                (pos) => cb(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy),
+                () => showToast('No se pudo obtener el GPS. Revisa los permisos de ubicación.', 'error'),
+                { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+        }
+
+        // ================== EVENTOS ==================
+        function setupEventListeners() {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => switchTab(btn.getAttribute('data-tab'))));
+
+            $('calc-sector-select').addEventListener('change', (e) => { if (e.target.value) renderCalculatorDetails(e.target.value); });
+            $('poly-crop').addEventListener('change', (e) => { $('poly-yield-target').value = CROP_DATABASE[e.target.value].defYield; });
+            $('poly-color').addEventListener('input', renderCurrentDrawing);
+
+            $('mode-perimeter').addEventListener('click', () => setMode('perimeter'));
+            $('mode-sector').addEventListener('click', () => setMode('sector'));
+
+            $('layer-sat').addEventListener('click', () => {
+                state.map.removeLayer(state.tileOsm); state.map.addLayer(state.tileSat);
+                $('layer-sat').className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-protekta-blue text-white shadow transition';
+                $('layer-osm').className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition';
+            });
+            $('layer-osm').addEventListener('click', () => {
+                state.map.removeLayer(state.tileSat); state.map.addLayer(state.tileOsm);
+                $('layer-osm').className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-protekta-blue text-white shadow transition';
+                $('layer-sat').className = 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-300 hover:bg-slate-700 transition';
+            });
+
+            $('btn-save-polygon').addEventListener('click', saveCurrentPolygon);
+            $('btn-clear-current').addEventListener('click', () => { cancelEditing(); clearCurrentDrawing(); });
+            $('btn-undo-point').addEventListener('click', undoPoint);
+            $('btn-center-all').addEventListener('click', fitAll);
+
+            $('btn-update-prices').addEventListener('click', () => {
+                const v = (id, def) => { const n = parseFloat($(id).value); return isNaN(n) || n < 0 ? def : n; };
+                state.prices.ureaPerTon = v('price-urea', 11500);
+                state.prices.mapPerTon = v('price-map', 16800);
+                state.prices.kclPerTon = v('price-kcl', 14200);
+                state.prices.waterPerM3 = v('price-water', 2.5);
+                state.params.rainMm = v('param-rain', 0);
+                state.params.nEff = Math.min(1, Math.max(0.3, v('param-neff', 75) / 100));
+                state.sectors.forEach(s => { s.properties.recipe = recipeForProps(s.properties); });
+                refreshAll();
+                showToast('Precios y parámetros aplicados; sectores recalculados.', 'success');
+            });
+
+            $('btn-my-location').addEventListener('click', () => getPosition((lat, lng, acc) => {
+                state.map.setView([lat, lng], 17);
+                if (state.gpsMarker) state.map.removeLayer(state.gpsMarker);
+                state.gpsMarker = L.circleMarker([lat, lng], { radius: 8, color: '#004B93', fillColor: '#2E7D32', fillOpacity: 0.9 }).addTo(state.map);
+                showToast(`Posición encontrada (±${Math.round(acc)} m).`, 'success');
+            }));
+
+            $('btn-gps-vertex').addEventListener('click', () => getPosition((lat, lng, acc) => {
+                addPoint(+lat.toFixed(6), +lng.toFixed(6));
+                state.map.setView([lat, lng], Math.max(state.map.getZoom(), 17));
+                showToast(`Vértice agregado con GPS (±${Math.round(acc)} m).`, acc > 15 ? 'info' : 'success');
+            }));
+
+            $('btn-add-manual-pt').addEventListener('click', () => {
+                const lat = parseFloat($('manual-lat').value), lng = parseFloat($('manual-lng').value);
+                if (isNaN(lat) || isNaN(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return showToast('Ingresa coordenadas decimales válidas.', 'error');
+                addPoint(lat, lng);
+                state.map.panTo([lat, lng]);
+            });
+
+            $('btn-export-geojson').addEventListener('click', exportGeoJSON);
+            $('btn-export-kml').addEventListener('click', exportKML);
+            $('btn-export-csv').addEventListener('click', exportCSV);
+            $('btn-import-data').addEventListener('click', () => $('file-input').click());
+            $('file-input').addEventListener('change', importGeoJSON);
+            $('btn-print-report').addEventListener('click', generatePrintReport);
+            $('btn-share-wa').addEventListener('click', shareWhatsApp);
+
+            $('btn-toggle-sidebar').addEventListener('click', () => $('sidebar').classList.toggle('-translate-x-full'));
+
+            // Delegación de eventos de la lista (sin onclick inline)
+            $('sectors-container').addEventListener('click', (e) => {
+                const btn = e.target.closest('button[data-act]');
+                if (!btn) return;
+                const id = btn.getAttribute('data-id'), act = btn.getAttribute('data-act');
+                if (act === 'zoom') zoomToSector(id);
+                else if (act === 'del') deleteSector(id);
+                else if (act === 'edit') startEditSector(id);
+                else if (act === 'calc') { switchTab('tab-calc'); $('calc-sector-select').value = id; renderCalculatorDetails(id); }
+            });
+
+            $('btn-delete-perimeter').addEventListener('click', () => {
+                if (!confirm('¿Eliminar el perímetro general?')) return;
+                state.perimeter = null; refreshAll();
+            });
+            $('btn-reset-all').addEventListener('click', () => {
+                if (!confirm('Se borrarán el perímetro y todos los sectores de este dispositivo. ¿Continuar?')) return;
+                state.perimeter = null; state.sectors = []; cancelEditing(); clearCurrentDrawing(); refreshAll();
+                showToast('Proyecto reiniciado.', 'info');
+            });
+        }
+
+        // ================== GEODESIA Y MEDICIÓN ==================
+        const geo = {
+            R: 6371008.8,          // radio medio (distancias y rumbos)
+            R_AREA: 6378137,       // mismo radio que usa Turf para áreas
+            rad: (d) => d * Math.PI / 180,
+            deg: (r) => r * 180 / Math.PI,
+            /** Distancia en metros entre dos puntos [lat, lng]. */
+            haversine(a, b) {
+                const dLat = geo.rad(b[0] - a[0]), dLng = geo.rad(b[1] - a[1]);
+                const h = Math.sin(dLat / 2) ** 2 + Math.cos(geo.rad(a[0])) * Math.cos(geo.rad(b[0])) * Math.sin(dLng / 2) ** 2;
+                return 2 * geo.R * Math.asin(Math.min(1, Math.sqrt(h)));
+            },
+            /** Rumbo inicial en grados (0 = norte, 90 = este). */
+            bearing(a, b) {
+                const p1 = geo.rad(a[0]), p2 = geo.rad(b[0]), dl = geo.rad(b[1] - a[1]);
+                const y = Math.sin(dl) * Math.cos(p2);
+                const x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+                return (geo.deg(Math.atan2(y, x)) + 360) % 360;
+            },
+            /** Punto a `dist` metros desde `p` en dirección `brg` grados. */
+            destination(p, brg, dist) {
+                const d = dist / geo.R, b = geo.rad(brg), p1 = geo.rad(p[0]), l1 = geo.rad(p[1]);
+                const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(b));
+                const l2 = l1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));
+                return [geo.deg(p2), ((geo.deg(l2) + 540) % 360) - 180];
+            },
+            pathLength(pts) { let t = 0; for (let i = 1; i < pts.length; i++) t += geo.haversine(pts[i - 1], pts[i]); return t; },
+            ringPerimeter(pts) { return pts.length < 2 ? 0 : geo.pathLength(pts) + geo.haversine(pts[pts.length - 1], pts[0]); },
+            /** Área en m² de un polígono [lat, lng] (esférico). */
+            ringAreaM2(pts) {
+                if (pts.length < 3) return 0;
+                let sum = 0;
+                for (let i = 0; i < pts.length; i++) {
+                    const p1 = pts[i], p2 = pts[(i + 1) % pts.length];
+                    sum += geo.rad(p2[1] - p1[1]) * (2 + Math.sin(geo.rad(p1[0])) + Math.sin(geo.rad(p2[0])));
+                }
+                return Math.abs(sum * geo.R_AREA * geo.R_AREA / 2);
+            },
+            circleRing(center, radiusM, n = 48) { return Array.from({ length: n }, (_, i) => geo.destination(center, (360 / n) * i, radiusM)); },
+            cardinal(b) { return ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'][Math.round(b / 45) % 8]; },
+            dms(v, isLat) {
+                const hemi = isLat ? (v >= 0 ? 'N' : 'S') : (v >= 0 ? 'E' : 'O');
+                const a = Math.abs(v), d = Math.floor(a), mFull = (a - d) * 60, m = Math.floor(mFull), sec = (mFull - m) * 60;
+                return `${d}° ${m}′ ${sec.toFixed(2)}″ ${hemi}`;
+            },
+            fmtDist(m, unit) {
+                if (unit === 'm') return `${m.toLocaleString('es-MX', { maximumFractionDigits: 1 })} m`;
+                if (unit === 'km') return `${(m / 1000).toFixed(3)} km`;
+                if (unit === 'ft') return `${(m * 3.280839895).toLocaleString('es-MX', { maximumFractionDigits: 0 })} ft`;
+                if (unit === 'mi') return `${(m / 1609.344).toFixed(3)} mi`;
+                return m < 1000 ? `${m.toFixed(m < 100 ? 1 : 0)} m` : `${(m / 1000).toFixed(2)} km`;
+            },
+            fmtArea(m2, unit) {
+                if (unit === 'm2') return `${Math.round(m2).toLocaleString('es-MX')} m²`;
+                if (unit === 'ha') return `${(m2 / 10000).toFixed(3)} ha`;
+                if (unit === 'ac') return `${(m2 / 4046.8564224).toFixed(3)} acres`;
+                return m2 < 10000 ? `${Math.round(m2).toLocaleString('es-MX')} m²` : `${(m2 / 10000).toFixed(2)} ha`;
+            }
+        };
+
+        const MEASURE = { active: false, mode: 'dist', pts: [], unitD: 'auto', unitA: 'auto', layer: null, text: '' };
+        const MEASURE_UNITS_KEY = 'protekta_measure_units';
+        const MEASURE_HINTS = {
+            dist: 'Toca el mapa para trazar una línea. Cada tramo muestra su longitud y el panel el total y el rumbo.',
+            area: 'Toca 3 o más puntos para medir una superficie libre (no se guarda como sector).',
+            circle: 'Toca el centro y luego un punto del borde. Útil para medir un pivote central.',
+            point: 'Toca el mapa para ver coordenadas. Con dos puntos verás la distancia y el rumbo entre ellos.'
+        };
+
+        function measureToggle(on) {
+            MEASURE.active = on;
+            $('measure-panel').classList.toggle('hidden', !on);
+            $('btn-measure').className = on
+                ? 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-slate-900 shadow transition'
+                : 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-amber-300 hover:bg-slate-700 transition';
+            if (on) {
+                try { const u = JSON.parse(localStorage.getItem(MEASURE_UNITS_KEY) || '{}'); if (u.d) MEASURE.unitD = u.d; if (u.a) MEASURE.unitA = u.a; } catch (e) {}
+                $('measure-unit-d').value = MEASURE.unitD; $('measure-unit-a').value = MEASURE.unitA;
+                if (!MEASURE.layer) MEASURE.layer = L.layerGroup().addTo(state.map);
+                if (window.innerWidth < 768) $('sidebar').classList.add('-translate-x-full');
+                state.map.getContainer().style.cursor = 'crosshair';
+                measureSetMode(MEASURE.mode);
+            } else {
+                if (MEASURE.layer) MEASURE.layer.clearLayers();
+                MEASURE.pts = [];
+                state.map.getContainer().style.cursor = '';
+            }
+        }
+
+        function measureSetMode(mode) {
+            MEASURE.mode = mode;
+            MEASURE.pts = [];
+            document.querySelectorAll('.mmode-btn').forEach(b => {
+                const on = b.getAttribute('data-mmode') === mode;
+                b.className = 'mmode-btn py-1.5 rounded-lg text-[10px] font-semibold border transition ' +
+                    (on ? 'bg-amber-500/20 border-amber-500 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700');
+            });
+            $('measure-hint').innerText = MEASURE_HINTS[mode];
+            measureRender();
+        }
+
+        function measureAddPoint(lat, lng) {
+            const p = [lat, lng];
+            if (MEASURE.mode === 'circle') { if (MEASURE.pts.length >= 2) MEASURE.pts = []; MEASURE.pts.push(p); }
+            else if (MEASURE.mode === 'point') { MEASURE.pts.push(p); if (MEASURE.pts.length > 2) MEASURE.pts.shift(); }
+            else MEASURE.pts.push(p);
+            measureRender();
+        }
+
+        function measureUndo() { MEASURE.pts.pop(); measureRender(); }
+        function measureClear() { MEASURE.pts = []; measureRender(); }
+
+        function measureRender() {
+            if (!MEASURE.layer) return;
+            const L_ = MEASURE.layer, pts = MEASURE.pts, uD = MEASURE.unitD, uA = MEASURE.unitA;
+            const color = '#f59e0b';
+            L_.clearLayers();
+            const row = (k, v) => `<div class="flex justify-between gap-3"><span class="text-slate-400">${k}</span><b class="text-right">${v}</b></div>`;
+            const label = (pos, text) => L.marker(pos, { interactive: false, icon: L.divIcon({ className: '', iconSize: [0, 0],
+                html: `<span style="display:inline-block;transform:translate(-50%,-50%);background:#0f172a;color:#fcd34d;font:600 10px sans-serif;padding:1px 6px;border-radius:6px;border:1px solid ${color};white-space:nowrap">${text}</span>` }) }).addTo(L_);
+            const dot = (p, first) => L.circleMarker(p, { radius: first ? 6 : 4.5, color: '#0f172a', weight: 2, fillColor: first ? '#4ade80' : color, fillOpacity: 1 }).addTo(L_);
+            let html = '', text = '', canSave = false;
+
+            if (MEASURE.mode === 'dist') {
+                if (pts.length > 1) L.polyline(pts, { color, weight: 3 }).addTo(L_);
+                pts.forEach((p, i) => dot(p, i === 0));
+                const segs = [];
+                for (let i = 1; i < pts.length; i++) {
+                    const d = geo.haversine(pts[i - 1], pts[i]); segs.push(d);
+                    label([(pts[i - 1][0] + pts[i][0]) / 2, (pts[i - 1][1] + pts[i][1]) / 2], geo.fmtDist(d, uD));
+                }
+                const total = segs.reduce((a, b) => a + b, 0);
+                if (pts.length < 2) html = '<span class="text-slate-500">Marca al menos 2 puntos.</span>';
+                else {
+                    const brg = geo.bearing(pts[pts.length - 2], pts[pts.length - 1]);
+                    html = row('Distancia total', `<span class="text-amber-300 text-sm">${geo.fmtDist(total, uD)}</span>`)
+                         + row('Tramos', segs.length)
+                         + row('Último rumbo', `${brg.toFixed(0)}° ${geo.cardinal(brg)}`);
+                    if (pts.length > 2) html += row('Línea recta inicio-fin', geo.fmtDist(geo.haversine(pts[0], pts[pts.length - 1]), uD));
+                    html += `<div class="pt-1 mt-1 border-t border-slate-800 text-[10px] text-slate-400">En todas las unidades: ${geo.fmtDist(total, 'm')} · ${geo.fmtDist(total, 'km')} · ${geo.fmtDist(total, 'ft')} · ${geo.fmtDist(total, 'mi')}</div>`;
+                    text = `Distancia total: ${geo.fmtDist(total, uD)} (${segs.length} tramos)`;
+                }
+            } else if (MEASURE.mode === 'area') {
+                if (pts.length > 2) L.polygon(pts, { color, weight: 3, fillColor: color, fillOpacity: 0.2 }).addTo(L_);
+                else if (pts.length === 2) L.polyline(pts, { color, weight: 3, dashArray: '5,5' }).addTo(L_);
+                pts.forEach((p, i) => dot(p, i === 0));
+                if (pts.length < 3) html = '<span class="text-slate-500">Marca al menos 3 puntos.</span>';
+                else {
+                    const a = geo.ringAreaM2(pts), per = geo.ringPerimeter(pts);
+                    const c = [pts.reduce((x, p) => x + p[0], 0) / pts.length, pts.reduce((x, p) => x + p[1], 0) / pts.length];
+                    label(c, geo.fmtArea(a, uA));
+                    html = row('Superficie', `<span class="text-amber-300 text-sm">${geo.fmtArea(a, uA)}</span>`)
+                         + row('Perímetro', geo.fmtDist(per, uD)) + row('Vértices', pts.length)
+                         + `<div class="pt-1 mt-1 border-t border-slate-800 text-[10px] text-slate-400">${geo.fmtArea(a, 'm2')} · ${geo.fmtArea(a, 'ha')} · ${geo.fmtArea(a, 'ac')}</div>`;
+                    text = `Superficie: ${geo.fmtArea(a, uA)} | Perímetro: ${geo.fmtDist(per, uD)}`;
+                    canSave = true;
+                }
+            } else if (MEASURE.mode === 'circle') {
+                pts.forEach((p, i) => dot(p, i === 0));
+                if (pts.length === 2) {
+                    const r = geo.haversine(pts[0], pts[1]);
+                    L.circle(pts[0], { radius: r, color, weight: 3, fillColor: color, fillOpacity: 0.2 }).addTo(L_);
+                    L.polyline(pts, { color, weight: 2, dashArray: '4,4' }).addTo(L_);
+                    label([(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2], `r = ${geo.fmtDist(r, uD)}`);
+                    const a = Math.PI * r * r;
+                    html = row('Radio', geo.fmtDist(r, uD)) + row('Diámetro', geo.fmtDist(2 * r, uD))
+                         + row('Circunferencia', geo.fmtDist(2 * Math.PI * r, uD))
+                         + row('Superficie', `<span class="text-amber-300 text-sm">${geo.fmtArea(a, uA)}</span>`)
+                         + `<div class="pt-1 mt-1 border-t border-slate-800 text-[10px] text-slate-400">${geo.fmtArea(a, 'm2')} · ${geo.fmtArea(a, 'ha')} · ${geo.fmtArea(a, 'ac')}</div>`;
+                    text = `Círculo: radio ${geo.fmtDist(r, uD)}, superficie ${geo.fmtArea(a, uA)}`;
+                    canSave = true;
+                } else html = `<span class="text-slate-500">${pts.length === 0 ? 'Toca el centro del círculo.' : 'Ahora toca un punto del borde.'}</span>`;
+            } else { // point
+                pts.forEach((p, i) => dot(p, i === pts.length - 1));
+                if (!pts.length) html = '<span class="text-slate-500">Toca el mapa para consultar un punto.</span>';
+                else {
+                    const p = pts[pts.length - 1];
+                    html = row('Latitud', p[0].toFixed(6)) + row('Longitud', p[1].toFixed(6))
+                         + `<div class="text-[10px] text-slate-400">${geo.dms(p[0], true)} &nbsp; ${geo.dms(p[1], false)}</div>`
+                         + `<a class="text-sky-300 underline text-[11px]" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${p[0].toFixed(6)},${p[1].toFixed(6)}">Abrir en Google Maps</a>`;
+                    text = `${p[0].toFixed(6)}, ${p[1].toFixed(6)}`;
+                    if (pts.length === 2) {
+                        L.polyline(pts, { color, weight: 2, dashArray: '5,5' }).addTo(L_);
+                        const d = geo.haversine(pts[0], pts[1]), b = geo.bearing(pts[0], pts[1]);
+                        label([(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2], geo.fmtDist(d, uD));
+                        html += `<div class="pt-1 mt-1 border-t border-slate-800"></div>` + row('Distancia al punto anterior', geo.fmtDist(d, uD)) + row('Rumbo', `${b.toFixed(0)}° ${geo.cardinal(b)}`);
+                        text += ` | a ${geo.fmtDist(d, uD)} al ${b.toFixed(0)}° ${geo.cardinal(b)} del punto anterior`;
+                    }
+                }
+            }
+            MEASURE.text = text;
+            $('measure-readout').innerHTML = html;
+            $('measure-to-sector').classList.toggle('hidden', !canSave);
+        }
+
+        function measureToSector() {
+            let ring = null;
+            if (MEASURE.mode === 'area' && MEASURE.pts.length >= 3) ring = MEASURE.pts.slice();
+            else if (MEASURE.mode === 'circle' && MEASURE.pts.length === 2) ring = geo.circleRing(MEASURE.pts[0], geo.haversine(MEASURE.pts[0], MEASURE.pts[1]));
+            if (!ring) return showToast('No hay una forma completa para pasar.', 'error');
+            measureToggle(false);
+            setMode('sector', true);
+            cancelEditing();
+            state.currentPoints = ring.map(p => [+p[0].toFixed(6), +p[1].toFixed(6)]);
+            renderCurrentDrawing();
+            calculateCurrentStats();
+            switchTab('tab-edit');
+            $('sidebar').classList.remove('-translate-x-full');
+            showToast('Forma pasada a Mapear: ponle nombre, cultivo y presiona Guardar.', 'success');
+        }
+
+        function measureCopy() {
+            if (!MEASURE.text) return showToast('Aún no hay una medición para copiar.', 'info');
+            const done = () => showToast('Resultado copiado.', 'success');
+            if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(MEASURE.text).then(done, () => showToast(MEASURE.text, 'info'));
+            else showToast(MEASURE.text, 'info');
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            $('btn-measure').addEventListener('click', () => measureToggle(!MEASURE.active));
+            $('measure-close').addEventListener('click', () => measureToggle(false));
+            document.querySelectorAll('.mmode-btn').forEach(b => b.addEventListener('click', () => measureSetMode(b.getAttribute('data-mmode'))));
+            $('measure-undo').addEventListener('click', measureUndo);
+            $('measure-clear').addEventListener('click', measureClear);
+            $('measure-copy').addEventListener('click', measureCopy);
+            $('measure-to-sector').addEventListener('click', measureToSector);
+            $('measure-gps').addEventListener('click', () => getPosition((lat, lng, acc) => {
+                measureAddPoint(+lat.toFixed(6), +lng.toFixed(6));
+                state.map.setView([lat, lng], Math.max(state.map.getZoom(), 17));
+                showToast(`Punto GPS agregado (±${Math.round(acc)} m).`, acc > 15 ? 'info' : 'success');
+            }));
+            const saveUnits = () => {
+                MEASURE.unitD = $('measure-unit-d').value; MEASURE.unitA = $('measure-unit-a').value;
+                try { localStorage.setItem(MEASURE_UNITS_KEY, JSON.stringify({ d: MEASURE.unitD, a: MEASURE.unitA })); } catch (e) {}
+                measureRender();
+            };
+            $('measure-unit-d').addEventListener('change', saveUnits);
+            $('measure-unit-a').addEventListener('change', saveUnits);
+        });
+
+        // ================== CLIMA (Open-Meteo, sin clave) ==================
+        function weatherCenter() {
+            const feat = state.perimeter || state.sectors[0];
+            if (feat) { const c = turf.centroid(feat).geometry.coordinates; return { lat: c[1], lng: c[0] }; }
+            const c = state.map.getCenter();
+            return { lat: c.lat, lng: c.lng };
+        }
+
+        async function fetchWeather() {
+            const box = $('weather-result');
+            const { lat, lng } = weatherCenter();
+            box.innerHTML = '<span class="text-slate-400">Consultando clima...</span>';
+            try {
+                const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}`
+                    + `&daily=precipitation_sum,et0_fao_evapotranspiration,temperature_2m_max,temperature_2m_min`
+                    + `&past_days=30&forecast_days=7&timezone=auto`;
+                const ctrl = new AbortController();
+                const t = setTimeout(() => ctrl.abort(), 12000);
+                const res = await fetch(url, { signal: ctrl.signal });
+                clearTimeout(t);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const d = (await res.json()).daily;
+                const sum = (arr, a, b) => arr.slice(a, b).reduce((x, y) => x + (y || 0), 0);
+                const past = 30, n = d.time.length;
+                const rainPast = sum(d.precipitation_sum, 0, past);
+                const rainNext = sum(d.precipitation_sum, past, n);
+                const rain48 = sum(d.precipitation_sum, past, past + 2);
+                const etPast = sum(d.et0_fao_evapotranspiration, 0, past);
+                const etNext = sum(d.et0_fao_evapotranspiration, past, n);
+                const tMax = Math.max(...d.temperature_2m_max.slice(past));
+                box.innerHTML = `
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <div class="bg-slate-900 p-2 rounded border border-slate-800"><span class="text-slate-400 block text-[10px]">Lluvia últimos 30 días</span><b>${rainPast.toFixed(0)} mm</b></div>
+                        <div class="bg-slate-900 p-2 rounded border border-slate-800"><span class="text-slate-400 block text-[10px]">Lluvia próximos 7 días</span><b>${rainNext.toFixed(0)} mm</b></div>
+                        <div class="bg-slate-900 p-2 rounded border border-slate-800"><span class="text-slate-400 block text-[10px]">ET₀ últimos 30 días</span><b>${etPast.toFixed(0)} mm</b></div>
+                        <div class="bg-slate-900 p-2 rounded border border-slate-800"><span class="text-slate-400 block text-[10px]">ET₀ próximos 7 días</span><b>${etNext.toFixed(0)} mm</b></div>
+                    </div>
+                    <div class="p-2 rounded border ${rain48 > 20 ? 'border-amber-800 bg-amber-950/40 text-amber-300' : 'border-emerald-800 bg-emerald-950/40 text-emerald-300'}">
+                        ${rain48 > 20
+                            ? `Se esperan ${rain48.toFixed(0)} mm en 48 h: pospón la urea para evitar pérdidas por lavado y escurrimiento.`
+                            : `Lluvia esperada en 48 h: ${rain48.toFixed(0)} mm. Ventana razonable para aplicar fertilizante.`}
+                        ${tMax > 38 ? '<br>Temperatura máxima prevista &gt; 38 °C: aplica en la mañana y riega después para reducir pérdida de N por volatilización.' : ''}
+                    </div>
+                    <button id="btn-use-rain" class="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 text-[11px] font-semibold rounded-lg border border-slate-700 transition">
+                        Usar ${rainPast.toFixed(0)} mm (30 días) como lluvia efectiva de referencia
+                    </button>
+                    <p class="text-[10px] text-slate-500">Datos de Open-Meteo en (${lat.toFixed(3)}, ${lng.toFixed(3)}). La lluvia efectiva real suele ser menor que la total.</p>`;
+                $('btn-use-rain').addEventListener('click', () => {
+                    $('param-rain').value = Math.round(rainPast * 0.7); // ~70% se considera efectiva
+                    showToast('Lluvia efectiva puesta en 70% de la registrada. Presiona "Aplicar y recalcular todo".', 'info');
+                });
+            } catch (e) {
+                box.innerHTML = '<span class="text-rose-400">No se pudo consultar el clima (sin conexión o servicio no disponible).</span>';
+            }
+        }
+
+        // ================== PWA / MODO SIN CONEXIÓN ==================
+        function registerOffline() {
+            if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
+            navigator.serviceWorker.register('sw.js').catch(() => { /* sin sw.js al lado: la app sigue funcionando en línea */ });
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            $('btn-weather').addEventListener('click', fetchWeather);
+            $('btn-selftest').addEventListener('click', showSelfTests);
+            registerOffline();
+            if (/[?&]test\b/.test(location.search)) showSelfTests();
+        });
+
+        function showToast(msg, type = 'info') {
+            const toast = $('toast'), icon = $('toast-icon');
+            $('toast-msg').innerText = msg;
+            icon.className = type === 'success' ? 'fa-solid fa-circle-check text-protekta-green'
+                : type === 'error' ? 'fa-solid fa-triangle-exclamation text-rose-400'
+                : 'fa-solid fa-circle-info text-blue-400';
+            toast.classList.remove('opacity-0', 'pointer-events-none');
+            toast.classList.add('opacity-100');
+            clearTimeout(showToast._t);
+            showToast._t = setTimeout(() => {
+                toast.classList.remove('opacity-100');
+                toast.classList.add('opacity-0', 'pointer-events-none');
+            }, 3500);
+        }
+    </script>
+</body>
+</html>

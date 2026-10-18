@@ -1,0 +1,19 @@
+{
+  "name": "PROTEKTA AGRICULTURA",
+  "short_name": "PROTEKTA Agro",
+  "description": "Mapeo GPS y calculadora de fertilización y riego",
+  "start_url": "./PROTEKTAAGRICOLA_v7.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0B131F",
+  "theme_color": "#0B131F",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 400'%3E%3Crect width='400' height='400' rx='72' fill='white'/%3E%3Cpath d='M200 40 L330 85 V210 C330 285 265 338 200 365 C135 338 70 285 70 210 V85 Z' fill='none' stroke='%23004B93' stroke-width='26' stroke-linejoin='round'/%3E%3Cpath d='M200 150 L275 200 V262 H125 V200 Z' fill='%23555555'/%3E%3Cpath d='M82 225 C135 252 265 252 318 225 C326 272 275 335 200 358 C125 335 74 272 82 225 Z' fill='%232E7D32'/%3E%3C/svg%3E",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
